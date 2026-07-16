@@ -1,0 +1,182 @@
+{
+  "benchmark": "synthetic_centroid_routing",
+  "seed": 42,
+  "configuration": {
+    "shards": 128,
+    "dimensions": 64,
+    "queries": 50,
+    "probe_shards": 8,
+    "bands": [
+      4,
+      8,
+      16,
+      32,
+      64
+    ],
+    "low_rank": 16,
+    "physical_vectors_loaded": false,
+    "billion_scale_estimate": false,
+    "estimated_catalog_items": 1000000,
+    "estimated_only": true
+  },
+  "methods": {
+    "exhaustive": {
+      "latency_ms": {
+        "mean": 0.009703999385237694,
+        "p50": 0.008600065484642982,
+        "p95": 0.012244976824149479,
+        "p99": 0.0317260064184665
+      },
+      "queries_per_second": 103050.29506919178,
+      "centroid_top_b_recall": 1.0,
+      "fraction_certified": 0.0,
+      "fraction_exact_fallback": 0.0,
+      "mean_used_spectral_band": 0.0,
+      "memory_bytes": 65536
+    },
+    "random": {
+      "latency_ms": {
+        "mean": 0.007921997457742691,
+        "p50": 0.0066999346017837524,
+        "p95": 0.0075099931564182034,
+        "p99": 0.03771993331611146
+      },
+      "queries_per_second": 126230.79031950887,
+      "centroid_top_b_recall": 0.065,
+      "fraction_certified": 0.0,
+      "fraction_exact_fallback": 0.0,
+      "mean_used_spectral_band": 0.0,
+      "memory_bytes": 0
+    },
+    "pca_low_rank": {
+      "latency_ms": {
+        "mean": 0.011694037821143866,
+        "p50": 0.011200085282325745,
+        "p95": 0.01306009944528341,
+        "p99": 0.019667090382426953
+      },
+      "queries_per_second": 85513.66220074221,
+      "centroid_top_b_recall": 0.8525,
+      "fraction_certified": 0.0,
+      "fraction_exact_fallback": 0.0,
+      "mean_used_spectral_band": 0.0,
+      "memory_bytes": 25088
+    },
+    "truncated_svd": {
+      "latency_ms": {
+        "mean": 0.011876008938997984,
+        "p50": 0.011299969628453255,
+        "p95": 0.012154976138845086,
+        "p99": 0.025007014628499715
+      },
+      "queries_per_second": 84203.37212076678,
+      "centroid_top_b_recall": 0.865,
+      "fraction_certified": 0.0,
+      "fraction_exact_fallback": 0.0,
+      "mean_used_spectral_band": 0.0,
+      "memory_bytes": 25088
+    },
+    "hierarchical": {
+      "latency_ms": {
+        "mean": 0.017330008558928967,
+        "p50": 0.01645000884309411,
+        "p95": 0.02096504322253167,
+        "p99": 0.0330429594032466
+      },
+      "queries_per_second": 57703.37600236028,
+      "centroid_top_b_recall": 1.0,
+      "fraction_certified": 0.0,
+      "fraction_exact_fallback": 0.0,
+      "mean_used_spectral_band": 0.0,
+      "memory_bytes": 72192
+    },
+    "ivf_centroid_probing": {
+      "latency_ms": {
+        "mean": 0.009713994804769754,
+        "p50": 0.009199953638017178,
+        "p95": 0.010654964717105031,
+        "p99": 0.022388994693756076
+      },
+      "queries_per_second": 102944.25929783091,
+      "centroid_top_b_recall": 1.0,
+      "fraction_certified": 0.0,
+      "fraction_exact_fallback": 0.0,
+      "mean_used_spectral_band": 0.0,
+      "memory_bytes": 65536
+    },
+    "ssfr": {
+      "latency_ms": {
+        "mean": 0.49226599745452404,
+        "p50": 0.479700043797493,
+        "p95": 0.6125750078354031,
+        "p99": 0.7671580091118809
+      },
+      "queries_per_second": 2031.4220465580315,
+      "centroid_top_b_recall": 1.0,
+      "fraction_certified": 1.0,
+      "fraction_exact_fallback": 0.0,
+      "mean_used_spectral_band": 64.0,
+      "memory_bytes": 330752,
+      "spectral_energy": {
+        "4": 0.3420541285025178,
+        "8": 0.45425055426202937,
+        "16": 0.589217668725216,
+        "32": 0.7495599390671395,
+        "64": 1.0
+      },
+      "ordering": {
+        "mean_consecutive_distance": 1.0187346473244068,
+        "median_consecutive_distance": 0.9694746840093118,
+        "total_variation": 129.37930021019966
+      }
+    },
+    "ssfr_without_ordering": {
+      "latency_ms": {
+        "mean": 0.5001459992490709,
+        "p50": 0.49934996059164405,
+        "p95": 0.60055002104491,
+        "p99": 0.6271969433873892
+      },
+      "queries_per_second": 1999.4161734801835,
+      "centroid_top_b_recall": 1.0,
+      "fraction_certified": 1.0,
+      "fraction_exact_fallback": 0.0,
+      "mean_used_spectral_band": 64.0,
+      "memory_bytes": 330752,
+      "spectral_energy": {
+        "4": 0.10320996237853151,
+        "8": 0.16622322856261187,
+        "16": 0.2865901273240875,
+        "32": 0.5271161308464823,
+        "64": 1.0
+      },
+      "ordering": {
+        "mean_consecutive_distance": 1.371670102781633,
+        "median_consecutive_distance": 1.3999856827758301,
+        "total_variation": 174.2021030532674
+      }
+    },
+    "ssfr_without_certificate": {
+      "latency_ms": {
+        "mean": 0.021762005053460598,
+        "p50": 0.020200037397444248,
+        "p95": 0.028830039082095013,
+        "p99": 0.044741991441696875
+      },
+      "queries_per_second": 45951.64818422739,
+      "centroid_top_b_recall": 0.57,
+      "fraction_certified": 0.0,
+      "fraction_exact_fallback": 0.0,
+      "mean_used_spectral_band": 4.0,
+      "memory_bytes": 12288,
+      "spectral_energy": {
+        "4": 0.3420541285025178
+      }
+    }
+  },
+  "kill_criteria": [
+    "The mean Fourier band is close to the shard count.",
+    "Measured SSFR routing was not faster than matrix multiplication.",
+    "Spectral payload plus residuals exceeded centroid matrix memory."
+  ]
+}

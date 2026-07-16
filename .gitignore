@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+artifacts/
+reports/*.csv
+reports/*.json
+reports/*.md
+reports/plots/
+*.npy
+*.npz
+*.parquet
+.DS_Store

@@ -1,0 +1,7 @@
+spectral_bands: [8, 16, 32, 64, 128, 256, 512]
+probe_shards: 16
+exact_fallback: true
+ordering_method: recursive_pca
+distance_metric: cosine
+normalize_vectors: true
+random_seed: 42

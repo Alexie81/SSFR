@@ -1,0 +1,11 @@
+# Capacity-planning estimate only. This file does not claim a physical benchmark.
+estimated_items: 1000000000
+estimated_shards: 16384
+embedding_dimension: 768
+spectral_bands: [32, 64, 128, 256, 512]
+probe_shards: 32
+exact_fallback: true
+ordering_method: recursive_pca
+distance_metric: cosine
+normalize_vectors: true
+random_seed: 42

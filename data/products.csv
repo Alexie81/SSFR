@@ -1,0 +1,21 @@
+product_id,title,description,category,brand,price_ron,color,audience,in_stock
+P0001,Adidași TrailRun X1,"Adidași negri impermeabili pentru alergare montană, talpă aderentă și amortizare bună.",Încălțăminte,TrailRun,449.99,negru,bărbați,1
+P0002,Pantofi Urban Flex,"Pantofi sport negri, comozi pentru mers zilnic și navetă.",Încălțăminte,UrbanFlex,289.9,negru,unisex,1
+P0003,Adidași AeroLight,"Încălțăminte ușoară pentru alergare pe asfalt, material respirabil.",Încălțăminte,Aero,379.5,gri,femei,1
+P0004,Bocanci Mountain Shield,Bocanci impermeabili pentru trasee montane și vreme rece.,Încălțăminte,MountainShield,599.0,negru,bărbați,1
+P0005,Geacă Storm Pro,Geacă neagră impermeabilă și rezistentă la vânt pentru drumeții.,Îmbrăcăminte,StormPro,699.99,negru,unisex,1
+P0006,Tricou DryFit Run,"Tricou tehnic pentru alergare, uscare rapidă și material respirabil.",Îmbrăcăminte,DryFit,129.9,negru,bărbați,1
+P0007,Rochie Emerald Evening,Rochie verde elegantă pentru nuntă și evenimente de seară.,Îmbrăcăminte,MaisonElle,749.0,verde,femei,1
+P0008,Telefon NovaMax 12,"Telefon cu baterie mare, cameră performantă și ecran OLED.",Electronice,Nova,3299.0,albastru,unisex,1
+P0009,Laptop DevPro 16,"Laptop pentru programare, virtualizare și editare video, 32 GB RAM.",Electronice,DevPro,7299.0,gri,unisex,1
+P0010,Căști QuietSound,Căști wireless cu anulare activă a zgomotului și autonomie ridicată.,Electronice,QuietSound,899.0,negru,unisex,1
+P0011,Cărucior BabyGo Compact,"Cărucior compact pentru nou-născut, pliabil și ușor de transportat.",Produse pentru copii,BabyGo,1399.0,bej,unisex,1
+P0012,Pătuț SafeSleep,"Pătuț din lemn pentru bebeluși, cu saltea și laterale reglabile.",Produse pentru copii,SafeSleep,1099.0,alb,unisex,1
+P0013,Scaun auto BabySecure,"Scaun auto pentru copil, protecție laterală și prindere ISOFIX.",Produse pentru copii,BabySecure,999.9,negru,unisex,1
+P0014,Aspirator RoboClean,"Aspirator robot cu hartă inteligentă, mop și control din aplicație.",Casă și grădină,RoboClean,1799.0,alb,unisex,1
+P0015,Masă Nordic Oak,Masă extensibilă din lemn pentru living și dining.,Casă și grădină,NordicHome,2399.0,maro,unisex,1
+P0016,Set gantere PowerSet,Set de gantere reglabile pentru antrenament acasă.,Sport,PowerSet,699.0,negru,unisex,1
+P0017,Ceas sport PulseTrack,"Ceas GPS pentru alergare, monitorizare puls și trasee montane.",Sport,PulseTrack,1299.0,negru,unisex,1
+P0018,Cremă HydraSkin,"Cremă hidratantă pentru ten sensibil, fără parfum.",Beauty,HydraSkin,119.0,alb,unisex,1
+P0019,Compresor AutoAir,Compresor portabil pentru umflarea anvelopelor auto.,Auto,AutoAir,249.0,negru,unisex,1
+P0020,Cameră bord DriveGuard,Cameră auto 4K cu vedere nocturnă și GPS.,Auto,DriveGuard,649.0,negru,unisex,1

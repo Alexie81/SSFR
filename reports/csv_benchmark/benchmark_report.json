@@ -1,0 +1,396 @@
+{
+  "benchmark": "csv_catalog",
+  "seed": 42,
+  "configuration": {
+    "csv": "data/products.csv",
+    "queries": "data/search_queries.csv",
+    "products": 20,
+    "shards": 8,
+    "probe_values": [
+      2,
+      4,
+      8
+    ],
+    "bands": [
+      1,
+      2,
+      4
+    ],
+    "top_k": 5,
+    "physical_vectors_loaded": true,
+    "local_index_backend": "hnsw"
+  },
+  "build": {
+    "products_loaded": 20,
+    "invalid_rows": 0,
+    "embedding_dimension": 384,
+    "embedding_cache_hit": true,
+    "shards_built": 8,
+    "bands": [
+      1,
+      2,
+      4
+    ],
+    "local_index_backend": "hnsw",
+    "build_time_seconds": 2.637249199906364,
+    "artifact_path": "D:\\Alexie\\algoritmi\\SSFR - SpectraShard Fourier Router\\artifacts\\benchmark_products_hnsw"
+  },
+  "methods": {
+    "global_exact": {
+      "latency_ms": {
+        "mean": 0.041540005865196385,
+        "p50": 0.03950006794184446,
+        "p95": 0.06011995719745753,
+        "p99": 0.07098397472873329
+      },
+      "queries_per_second": 24073.179075736087,
+      "centroid_top_b_recall": null,
+      "vector_top_k_recall": 1.0,
+      "fraction_certified": 0.0,
+      "fraction_exact_fallback": 0.0,
+      "mean_used_spectral_band": 0.0,
+      "mean_shards_accessed": 8.0,
+      "mean_local_candidates_available": 20.0,
+      "memory_bytes": 31120
+    },
+    "global_hnsw": {
+      "latency_ms": {
+        "mean": 0.06762001818666856,
+        "p50": 0.06330001633614302,
+        "p95": 0.09367009624838828,
+        "p99": 0.09753406047821045
+      },
+      "queries_per_second": 14788.52012786285,
+      "centroid_top_b_recall": null,
+      "vector_top_k_recall": 1.0,
+      "fraction_certified": 0.0,
+      "fraction_exact_fallback": 0.0,
+      "mean_used_spectral_band": 0.0,
+      "mean_shards_accessed": 1.0,
+      "mean_local_candidates_available": 20.0,
+      "memory_bytes": 31120,
+      "memory_note": "Python arrays only; native HNSW graph allocation is not included."
+    },
+    "exhaustive_centroid_plus_local_hnsw": {
+      "latency_ms": {
+        "mean": 0.19864666586120924,
+        "p50": 0.1610000617802143,
+        "p95": 0.346370053011924,
+        "p99": 0.3782340348698198
+      },
+      "queries_per_second": 5034.063852341129,
+      "centroid_top_b_recall": null,
+      "vector_top_k_recall": 0.8266666666666665,
+      "fraction_certified": 1.0,
+      "fraction_exact_fallback": 0.0,
+      "mean_used_spectral_band": 0.0,
+      "mean_shards_accessed": 4.666666666666667,
+      "mean_local_candidates_available": 12.4,
+      "memory_bytes": 55696
+    },
+    "hierarchical_plus_local_hnsw": {
+      "latency_ms": {
+        "mean": 0.24364000031103691,
+        "p50": 0.21399999968707561,
+        "p95": 0.5586500279605384,
+        "p99": 0.8198899962007997
+      },
+      "queries_per_second": 4104.416346754946,
+      "centroid_top_b_recall": null,
+      "vector_top_k_recall": 0.84,
+      "fraction_certified": 0.0,
+      "fraction_exact_fallback": 0.0,
+      "mean_used_spectral_band": 0.0,
+      "mean_shards_accessed": 4.666666666666667,
+      "mean_local_candidates_available": 12.666666666666666,
+      "memory_bytes": 64944
+    },
+    "ssfr_plus_local_hnsw": {
+      "latency_ms": {
+        "mean": 1.7819800103704135,
+        "p50": 1.7442000098526478,
+        "p95": 2.681350079365074,
+        "p99": 3.0170700931921597
+      },
+      "queries_per_second": 561.1735228119275,
+      "centroid_top_b_recall": null,
+      "vector_top_k_recall": 0.8266666666666665,
+      "fraction_certified": 1.0,
+      "fraction_exact_fallback": 0.0,
+      "mean_used_spectral_band": 3.0,
+      "mean_shards_accessed": 4.666666666666667,
+      "mean_local_candidates_available": 12.4,
+      "memory_bytes": 154320
+    }
+  },
+  "by_probe_shards": {
+    "2": {
+      "global_exact": {
+        "latency_ms": {
+          "mean": 0.045819999650120735,
+          "p50": 0.036800047382712364,
+          "p95": 0.06931996904313564,
+          "p99": 0.07282397709786892
+        },
+        "queries_per_second": 21824.530939239434,
+        "centroid_top_b_recall": null,
+        "vector_top_k_recall": 1.0,
+        "fraction_certified": 0.0,
+        "fraction_exact_fallback": 0.0,
+        "mean_used_spectral_band": 0.0,
+        "mean_shards_accessed": 8.0,
+        "mean_local_candidates_available": 20.0,
+        "memory_bytes": 31120
+      },
+      "global_hnsw": {
+        "latency_ms": {
+          "mean": 0.06694002076983452,
+          "p50": 0.05570007488131523,
+          "p95": 0.08906000293791294,
+          "p99": 0.09101199917495251
+        },
+        "queries_per_second": 14938.746485280963,
+        "centroid_top_b_recall": null,
+        "vector_top_k_recall": 1.0,
+        "fraction_certified": 0.0,
+        "fraction_exact_fallback": 0.0,
+        "mean_used_spectral_band": 0.0,
+        "mean_shards_accessed": 1.0,
+        "mean_local_candidates_available": 20.0,
+        "memory_bytes": 31120,
+        "memory_note": "Python arrays only; native HNSW graph allocation is not included."
+      },
+      "exhaustive_centroid_plus_local_hnsw": {
+        "latency_ms": {
+          "mean": 0.10329997166991234,
+          "p50": 0.10249996557831764,
+          "p95": 0.11703998316079378,
+          "p99": 0.1186079764738679
+        },
+        "queries_per_second": 9680.544765253455,
+        "centroid_top_b_recall": null,
+        "vector_top_k_recall": 0.64,
+        "fraction_certified": 1.0,
+        "fraction_exact_fallback": 0.0,
+        "mean_used_spectral_band": 0.0,
+        "mean_shards_accessed": 2.0,
+        "mean_local_candidates_available": 6.0,
+        "memory_bytes": 55696
+      },
+      "hierarchical_plus_local_hnsw": {
+        "latency_ms": {
+          "mean": 0.1113200094550848,
+          "p50": 0.1194999786093831,
+          "p95": 0.12013998348265886,
+          "p99": 0.12018798384815454
+        },
+        "queries_per_second": 8983.110986919904,
+        "centroid_top_b_recall": null,
+        "vector_top_k_recall": 0.68,
+        "fraction_certified": 0.0,
+        "fraction_exact_fallback": 0.0,
+        "mean_used_spectral_band": 0.0,
+        "mean_shards_accessed": 2.0,
+        "mean_local_candidates_available": 6.8,
+        "memory_bytes": 64944
+      },
+      "ssfr_plus_local_hnsw": {
+        "latency_ms": {
+          "mean": 1.333460002206266,
+          "p50": 1.270500011742115,
+          "p95": 1.7962800338864326,
+          "p99": 1.891816034913063
+        },
+        "queries_per_second": 749.9287555273182,
+        "centroid_top_b_recall": null,
+        "vector_top_k_recall": 0.64,
+        "fraction_certified": 1.0,
+        "fraction_exact_fallback": 0.0,
+        "mean_used_spectral_band": 4.0,
+        "mean_shards_accessed": 2.0,
+        "mean_local_candidates_available": 6.0,
+        "memory_bytes": 154320
+      }
+    },
+    "4": {
+      "global_exact": {
+        "latency_ms": {
+          "mean": 0.04129998851567507,
+          "p50": 0.03950006794184446,
+          "p95": 0.05217995494604111,
+          "p99": 0.05387594923377037
+        },
+        "queries_per_second": 24213.081793484234,
+        "centroid_top_b_recall": null,
+        "vector_top_k_recall": 1.0,
+        "fraction_certified": 0.0,
+        "fraction_exact_fallback": 0.0,
+        "mean_used_spectral_band": 0.0,
+        "mean_shards_accessed": 8.0,
+        "mean_local_candidates_available": 20.0,
+        "memory_bytes": 31120
+      },
+      "global_hnsw": {
+        "latency_ms": {
+          "mean": 0.0736800255253911,
+          "p50": 0.07289997301995754,
+          "p95": 0.0971200643107295,
+          "p99": 0.09822405409067869
+        },
+        "queries_per_second": 13572.199424054039,
+        "centroid_top_b_recall": null,
+        "vector_top_k_recall": 1.0,
+        "fraction_certified": 0.0,
+        "fraction_exact_fallback": 0.0,
+        "mean_used_spectral_band": 0.0,
+        "mean_shards_accessed": 1.0,
+        "mean_local_candidates_available": 20.0,
+        "memory_bytes": 31120,
+        "memory_note": "Python arrays only; native HNSW graph allocation is not included."
+      },
+      "exhaustive_centroid_plus_local_hnsw": {
+        "latency_ms": {
+          "mean": 0.1791799906641245,
+          "p50": 0.1610000617802143,
+          "p95": 0.23883995600044727,
+          "p99": 0.25008794851601124
+        },
+        "queries_per_second": 5580.980310879213,
+        "centroid_top_b_recall": null,
+        "vector_top_k_recall": 0.8400000000000001,
+        "fraction_certified": 1.0,
+        "fraction_exact_fallback": 0.0,
+        "mean_used_spectral_band": 0.0,
+        "mean_shards_accessed": 4.0,
+        "mean_local_candidates_available": 11.2,
+        "memory_bytes": 55696
+      },
+      "hierarchical_plus_local_hnsw": {
+        "latency_ms": {
+          "mean": 0.21719997748732567,
+          "p50": 0.21399999968707561,
+          "p95": 0.30915995594114065,
+          "p99": 0.3129519475623965
+        },
+        "queries_per_second": 4604.0520425852865,
+        "centroid_top_b_recall": null,
+        "vector_top_k_recall": 0.8400000000000001,
+        "fraction_certified": 0.0,
+        "fraction_exact_fallback": 0.0,
+        "mean_used_spectral_band": 0.0,
+        "mean_shards_accessed": 4.0,
+        "mean_local_candidates_available": 11.2,
+        "memory_bytes": 64944
+      },
+      "ssfr_plus_local_hnsw": {
+        "latency_ms": {
+          "mean": 1.670980011112988,
+          "p50": 1.667700009420514,
+          "p95": 1.9063000101596117,
+          "p99": 1.9114200118929148
+        },
+        "queries_per_second": 598.4512042929413,
+        "centroid_top_b_recall": null,
+        "vector_top_k_recall": 0.8400000000000001,
+        "fraction_certified": 1.0,
+        "fraction_exact_fallback": 0.0,
+        "mean_used_spectral_band": 4.0,
+        "mean_shards_accessed": 4.0,
+        "mean_local_candidates_available": 11.2,
+        "memory_bytes": 154320
+      }
+    },
+    "8": {
+      "global_exact": {
+        "latency_ms": {
+          "mean": 0.03750002942979336,
+          "p50": 0.04039995837956667,
+          "p95": 0.04162008408457041,
+          "p99": 0.041684084571897984
+        },
+        "queries_per_second": 26666.645738830037,
+        "centroid_top_b_recall": null,
+        "vector_top_k_recall": 1.0,
+        "fraction_certified": 0.0,
+        "fraction_exact_fallback": 0.0,
+        "mean_used_spectral_band": 0.0,
+        "mean_shards_accessed": 8.0,
+        "mean_local_candidates_available": 20.0,
+        "memory_bytes": 31120
+      },
+      "global_hnsw": {
+        "latency_ms": {
+          "mean": 0.062240008264780045,
+          "p50": 0.06330001633614302,
+          "p95": 0.07016006857156754,
+          "p99": 0.07027206942439079
+        },
+        "queries_per_second": 16066.835912775308,
+        "centroid_top_b_recall": null,
+        "vector_top_k_recall": 1.0,
+        "fraction_certified": 0.0,
+        "fraction_exact_fallback": 0.0,
+        "mean_used_spectral_band": 0.0,
+        "mean_shards_accessed": 1.0,
+        "mean_local_candidates_available": 20.0,
+        "memory_bytes": 31120,
+        "memory_note": "Python arrays only; native HNSW graph allocation is not included."
+      },
+      "exhaustive_centroid_plus_local_hnsw": {
+        "latency_ms": {
+          "mean": 0.3134600352495909,
+          "p50": 0.3255000337958336,
+          "p95": 0.37482003681361675,
+          "p99": 0.3839240316301584
+        },
+        "queries_per_second": 3190.199347753392,
+        "centroid_top_b_recall": null,
+        "vector_top_k_recall": 1.0,
+        "fraction_certified": 1.0,
+        "fraction_exact_fallback": 0.0,
+        "mean_used_spectral_band": 0.0,
+        "mean_shards_accessed": 8.0,
+        "mean_local_candidates_available": 20.0,
+        "memory_bytes": 55696
+      },
+      "hierarchical_plus_local_hnsw": {
+        "latency_ms": {
+          "mean": 0.40240001399070024,
+          "p50": 0.27469999622553587,
+          "p95": 0.791899999603629,
+          "p99": 0.866539990529418
+        },
+        "queries_per_second": 2485.089376818736,
+        "centroid_top_b_recall": null,
+        "vector_top_k_recall": 1.0,
+        "fraction_certified": 0.0,
+        "fraction_exact_fallback": 0.0,
+        "mean_used_spectral_band": 0.0,
+        "mean_shards_accessed": 8.0,
+        "mean_local_candidates_available": 20.0,
+        "memory_bytes": 64944
+      },
+      "ssfr_plus_local_hnsw": {
+        "latency_ms": {
+          "mean": 2.3415000177919865,
+          "p50": 2.224199939519167,
+          "p95": 2.9811000917106867,
+          "p99": 3.0770200956612825
+        },
+        "queries_per_second": 427.0766570153568,
+        "centroid_top_b_recall": null,
+        "vector_top_k_recall": 1.0,
+        "fraction_certified": 1.0,
+        "fraction_exact_fallback": 0.0,
+        "mean_used_spectral_band": 1.0,
+        "mean_shards_accessed": 8.0,
+        "mean_local_candidates_available": 20.0,
+        "memory_bytes": 154320
+      }
+    }
+  },
+  "kill_criteria": [
+    "Measured SSFR vector Recall@k was below 0.95.",
+    "SSFR end-to-end latency did not improve on exhaustive centroid routing."
+  ]
+}
