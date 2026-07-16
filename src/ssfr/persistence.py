@@ -48,10 +48,11 @@ def save_router(router: "SSFRRouter", path: str | Path) -> None:
     np.save(directory / "order.npy", router.order, allow_pickle=False)
     np.save(directory / "inverse_order.npy", router.inverse_order, allow_pickle=False)
     np.save(directory / "exact_centroids.npy", router.centroids, allow_pickle=False)
+    full_rfft = np.fft.rfft(router.ordered_centroids, axis=0)
     for band in router.bands:
         np.save(
             directory / f"spectral_payload_{band}.npy",
-            router.spectral_payloads[band],
+            full_rfft[: band + 1],
             allow_pickle=False,
         )
         np.save(directory / f"residuals_{band}.npy", router.residuals[band], allow_pickle=False)
@@ -103,7 +104,27 @@ def load_router(path: str | Path) -> "SSFRRouter":
         band: frequency_indices(router.centroids.shape[0], band) for band in router.bands
     }
     router.spectral_payloads = {
-        band: np.load(directory / f"spectral_payload_{band}.npy", allow_pickle=False)
+        band: np.empty((0, router.centroids.shape[1]), dtype=np.complex128)
+        for band in router.bands
+    }
+    full_band = router.centroids.shape[0] // 2
+    partial_bands = [band for band in router.bands if band < full_band]
+    if partial_bands:
+        largest_partial = max(partial_bands)
+        largest_payload = np.load(
+            directory / f"spectral_payload_{largest_partial}.npy", allow_pickle=False
+        )
+        router._rfft_payload = np.ascontiguousarray(largest_payload)
+    else:
+        router._rfft_payload = np.empty(
+            (0, router.centroids.shape[1]), dtype=np.complex128
+        )
+    router.spectral_payloads = {
+        band: (
+            router._rfft_payload[: band + 1]
+            if band < full_band
+            else np.empty((0, router.centroids.shape[1]), dtype=np.complex128)
+        )
         for band in router.bands
     }
     router.residuals = {
@@ -126,6 +147,6 @@ def load_router(path: str | Path) -> "SSFRRouter":
         )
         for item in metadata_payload
     ] or None
-    router._full_spectrum = np.fft.fft(router.ordered_centroids, axis=0)
+    router._full_spectrum = None
     router._fitted = True
     return router

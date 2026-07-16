@@ -40,8 +40,14 @@ def main() -> None:
     parser.add_argument("--items", type=int, default=100_000)
     parser.add_argument("--dimensions", type=int, default=96)
     parser.add_argument("--shards", type=int, default=256)
-    parser.add_argument("--probe-shards", type=int, default=16)
+    parser.add_argument("--probe-shards", type=int, default=32)
     parser.add_argument("--top-k", type=int, default=10)
+    parser.add_argument(
+        "--local-index",
+        choices=("auto", "exact", "hnsw"),
+        default="auto",
+    )
+    parser.add_argument("--latency-runs", type=int, default=100)
     parser.add_argument(
         "--query", default="adidași negri comozi pentru alergare"
     )
@@ -84,7 +90,7 @@ def main() -> None:
     indexes = {}
     for shard_id in range(args.shards):
         positions = np.flatnonzero(shard_result.assignments == shard_id)
-        local = LocalShardIndex("exact", "cosine")
+        local = LocalShardIndex(args.local_index, "cosine")
         local.build(embeddings[positions], product_ids[positions])
         indexes[shard_id] = local
     build_seconds = perf_counter() - build_started
@@ -96,11 +102,27 @@ def main() -> None:
         + 0.04 * rng.normal(size=(1, args.dimensions)),
         name="query",
     )[0]
-    result = DistributedSSFRSearch(router, indexes).search(
+    searcher = DistributedSSFRSearch(router, indexes)
+    result = searcher.search(
         query_vector,
         top_k=args.top_k,
         probe_shards=min(args.probe_shards, args.shards),
     )
+    warm_latencies = []
+    if args.latency_runs > 0:
+        for _ in range(min(10, args.latency_runs)):
+            searcher.search(
+                query_vector,
+                top_k=args.top_k,
+                probe_shards=min(args.probe_shards, args.shards),
+            )
+        for _ in range(args.latency_runs):
+            measured = searcher.search(
+                query_vector,
+                top_k=args.top_k,
+                probe_shards=min(args.probe_shards, args.shards),
+            )
+            warm_latencies.append(measured.total_latency_ms)
     oracle_ids, _ = exact_global_search(
         query_vector, embeddings, product_ids, args.top_k
     )
@@ -109,8 +131,10 @@ def main() -> None:
 
     print(f"Catalog: {args.items:,} synthetic products, {args.shards} shards")
     print(f"Offline build time: {build_seconds:.3f} s")
+    print(f"Local index backend: {sorted({index.backend for index in indexes.values()})}")
     print(f"Query: {args.query}")
     print(f"Fourier band: {result.route.used_band}")
+    print(f"Route mode: {result.route.route_mode}")
     print(f"Selected shards: {result.route.shard_ids.tolist()}")
     print(
         "Centroid certificate: "
@@ -120,6 +144,12 @@ def main() -> None:
     print(f"SSFR latency: {result.routing_latency_ms:.3f} ms")
     print(f"Local search latency: {result.local_search_latency_ms:.3f} ms")
     print(f"Total latency: {result.total_latency_ms:.3f} ms")
+    if warm_latencies:
+        print(
+            f"Warm search P50/P95 over {len(warm_latencies)} runs: "
+            f"{np.percentile(warm_latencies, 50):.3f}/"
+            f"{np.percentile(warm_latencies, 95):.3f} ms"
+        )
     print(f"Recall@{args.top_k} vs global exact oracle: {recall:.4f}")
     print("Top products:")
     for rank, (product_id, score) in enumerate(

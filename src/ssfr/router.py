@@ -38,6 +38,7 @@ class SSFRRouter:
         self.spectral_payloads: dict[int, np.ndarray] = {}
         self.residuals: dict[int, np.ndarray] = {}
         self._full_spectrum: np.ndarray | None = None
+        self._rfft_payload: np.ndarray | None = None
 
     @property
     def fitted(self) -> bool:
@@ -89,20 +90,43 @@ class SSFRRouter:
         self.bands = sanitize_bands(self.config.spectral_bands, matrix.shape[0])
         self._full_spectrum = np.fft.fft(self.ordered_centroids, axis=0)
         self._refresh_spectral_artifacts()
+        self._full_spectrum = None
         self._fitted = True
         return self
 
     def _refresh_spectral_artifacts(self) -> None:
         if self._full_spectrum is None:
             raise RuntimeError("full spectrum is unavailable")
+        rfft_size = self.ordered_centroids.shape[0] // 2 + 1
+        full_rfft = np.ascontiguousarray(self._full_spectrum[:rfft_size])
+        full_band = self.ordered_centroids.shape[0] // 2
+        partial_bands = [band for band in self.bands if band < full_band]
+        maximum_stored_band = max(partial_bands, default=-1)
+        self._rfft_payload = (
+            np.ascontiguousarray(full_rfft[: maximum_stored_band + 1])
+            if maximum_stored_band >= 0
+            else np.empty((0, self.ordered_centroids.shape[1]), dtype=np.complex128)
+        )
         self.frequency_map = {}
         self.spectral_payloads = {}
         self.residuals = {}
         for band in self.bands:
-            indices = frequency_indices(self.ordered_centroids.shape[0], band)
+            indices = np.arange(band + 1, dtype=np.int64)
             self.frequency_map[band] = indices
-            self.spectral_payloads[band] = np.ascontiguousarray(self._full_spectrum[indices])
-            reconstructed = reconstruct_centroids(self._full_spectrum, band)
+            if band >= full_band:
+                self.spectral_payloads[band] = np.empty(
+                    (0, self.ordered_centroids.shape[1]), dtype=np.complex128
+                )
+                self.residuals[band] = np.zeros(
+                    self.ordered_centroids.shape[0], dtype=np.float64
+                )
+                continue
+            self.spectral_payloads[band] = self._rfft_payload[: band + 1]
+            truncated = np.zeros_like(full_rfft)
+            truncated[: band + 1] = full_rfft[: band + 1]
+            reconstructed = np.fft.irfft(
+                truncated, n=self.ordered_centroids.shape[0], axis=0
+            )
             ordered_residuals = residual_norms(self.ordered_centroids, reconstructed)
             original_residuals = np.empty_like(ordered_residuals)
             original_residuals[self.order] = ordered_residuals
@@ -129,11 +153,13 @@ class SSFRRouter:
         return vector, norm
 
     def _approximate_scores(self, query: np.ndarray, band: int) -> np.ndarray:
-        ordered = reconstruct_scores(
-            self.spectral_payloads[band],
-            self.frequency_map[band],
-            query,
-            self.shard_count,
+        if band >= self.shard_count // 2:
+            return self.centroids @ np.asarray(query, dtype=np.float64)
+        half_spectrum = np.zeros(self.shard_count // 2 + 1, dtype=np.complex128)
+        half_spectrum[: band + 1] = self.spectral_payloads[band] @ query
+        ordered = np.fft.irfft(
+            half_spectrum,
+            n=self.shard_count,
         )
         original = np.empty_like(ordered)
         original[self.order] = ordered
@@ -151,11 +177,42 @@ class SSFRRouter:
             raise ValueError(f"probe_shards must be between 1 and {self.shard_count}")
 
         last: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int] | None = None
+        full_band = self.shard_count // 2
+        if self._rfft_payload is None:
+            raise RuntimeError("spectral payload is unavailable")
+        half_spectrum = np.zeros(self.shard_count // 2 + 1, dtype=np.complex128)
+        previous_band = -1
         for band in self.bands:
-            scores = self._approximate_scores(vector, band)
+            if band >= full_band:
+                exact_scores = self.centroids @ vector
+                selected = top_indices(exact_scores, count)
+                return RouteResult(
+                    shard_ids=selected,
+                    approximate_scores=exact_scores,
+                    lower_bounds=exact_scores.copy(),
+                    upper_bounds=exact_scores.copy(),
+                    used_band=band,
+                    centroid_ranking_certified=True,
+                    vector_pruning_certified=False,
+                    used_exact_fallback=False,
+                    latency_ms=(perf_counter() - started) * 1000.0,
+                    route_mode="full_band_exact_fast_path",
+                )
+            start_frequency = previous_band + 1
+            if start_frequency <= band:
+                half_spectrum[start_frequency : band + 1] = (
+                    self._rfft_payload[start_frequency : band + 1] @ vector
+                )
+            ordered_scores = np.fft.irfft(
+                half_spectrum,
+                n=self.shard_count,
+            )
+            scores = np.empty_like(ordered_scores)
+            scores[self.order] = ordered_scores
             lower, upper = score_intervals(scores, self.residuals[band], query_norm)
             selected, certified, _ = certify_top_b(scores, lower, upper, count)
             last = selected, scores, lower, upper, band
+            previous_band = band
             if certified:
                 return RouteResult(
                     shard_ids=selected,
@@ -167,6 +224,7 @@ class SSFRRouter:
                     vector_pruning_certified=False,
                     used_exact_fallback=False,
                     latency_ms=(perf_counter() - started) * 1000.0,
+                    route_mode="spectral_certified",
                 )
 
         if self.config.exact_fallback:
@@ -182,6 +240,7 @@ class SSFRRouter:
                 vector_pruning_certified=False,
                 used_exact_fallback=True,
                 latency_ms=(perf_counter() - started) * 1000.0,
+                route_mode="exact_fallback",
             )
 
         if last is None:  # defensive; fit always creates at least one band
@@ -197,6 +256,7 @@ class SSFRRouter:
             vector_pruning_certified=False,
             used_exact_fallback=False,
             latency_ms=(perf_counter() - started) * 1000.0,
+            route_mode="spectral_approximate",
         )
 
     def exact_route(
@@ -221,6 +281,7 @@ class SSFRRouter:
             vector_pruning_certified=False,
             used_exact_fallback=True,
             latency_ms=(perf_counter() - started) * 1000.0,
+            route_mode="exact_route",
         )
 
     def route_batch(
@@ -254,16 +315,49 @@ class SSFRRouter:
             int, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]
         ] = {}
 
+        if self._rfft_payload is None:
+            raise RuntimeError("spectral payload is unavailable")
+        half_spectra = np.zeros(
+            (batch_size, self.shard_count // 2 + 1), dtype=np.complex128
+        )
+        previous_band = -1
+        full_band = self.shard_count // 2
         for band in self.bands:
             if unresolved.size == 0:
                 break
+            if band >= full_band:
+                exact_scores = matrix[unresolved] @ self.centroids.T
+                elapsed_per_query = (perf_counter() - started) * 1000.0 / batch_size
+                for local_position, query_id in enumerate(unresolved):
+                    scores = exact_scores[local_position]
+                    selected = top_indices(scores, count)
+                    results[int(query_id)] = RouteResult(
+                        shard_ids=selected,
+                        approximate_scores=scores.copy(),
+                        lower_bounds=scores.copy(),
+                        upper_bounds=scores.copy(),
+                        used_band=band,
+                        centroid_ranking_certified=True,
+                        vector_pruning_certified=False,
+                        used_exact_fallback=False,
+                        latency_ms=elapsed_per_query,
+                        route_mode="full_band_exact_fast_path",
+                    )
+                unresolved = np.empty(0, dtype=np.int64)
+                break
             active_queries = matrix[unresolved]
-            coefficients = self.spectral_payloads[band] @ active_queries.T
-            spectra = np.zeros(
-                (unresolved.size, self.shard_count), dtype=np.complex128
+            start_frequency = previous_band + 1
+            coefficients = (
+                self._rfft_payload[start_frequency : band + 1] @ active_queries.T
             )
-            spectra[:, self.frequency_map[band]] = coefficients.T
-            ordered_scores = np.fft.ifft(spectra, axis=1).real
+            half_spectra[
+                unresolved, start_frequency : band + 1
+            ] = coefficients.T
+            ordered_scores = np.fft.irfft(
+                half_spectra[unresolved],
+                n=self.shard_count,
+                axis=1,
+            )
             scores = np.empty_like(ordered_scores)
             scores[:, self.order] = ordered_scores
             errors = error_norms[unresolved, None] * self.residuals[band][None, :]
@@ -297,10 +391,12 @@ class SSFRRouter:
                         vector_pruning_certified=False,
                         used_exact_fallback=False,
                         latency_ms=elapsed_per_query,
+                        route_mode="spectral_certified",
                     )
                 else:
                     next_unresolved.append(int(query_id))
             unresolved = np.asarray(next_unresolved, dtype=np.int64)
+            previous_band = band
 
         if unresolved.size and self.config.exact_fallback:
             exact_scores = matrix[unresolved] @ self.centroids.T
@@ -318,6 +414,7 @@ class SSFRRouter:
                     vector_pruning_certified=False,
                     used_exact_fallback=True,
                     latency_ms=elapsed_per_query,
+                    route_mode="exact_fallback",
                 )
         elif unresolved.size:
             elapsed_per_query = (perf_counter() - started) * 1000.0 / batch_size
@@ -333,12 +430,13 @@ class SSFRRouter:
                     vector_pruning_certified=False,
                     used_exact_fallback=False,
                     latency_ms=elapsed_per_query,
+                    route_mode="spectral_approximate",
                 )
         return [result for result in results if result is not None]
 
     def memory_report(self) -> dict[str, int]:
         self._require_fitted()
-        payload = sum(value.nbytes for value in self.spectral_payloads.values())
+        payload = 0 if self._rfft_payload is None else self._rfft_payload.nbytes
         residual = sum(value.nbytes for value in self.residuals.values())
         ordering = self.order.nbytes + self.inverse_order.nbytes
         full = self.centroids.nbytes
@@ -353,10 +451,13 @@ class SSFRRouter:
 
     def spectral_energy_report(self) -> dict[int, float]:
         self._require_fitted()
-        if self._full_spectrum is None:
-            self._full_spectrum = np.fft.fft(self.ordered_centroids, axis=0)
+        full_spectrum = (
+            self._full_spectrum
+            if self._full_spectrum is not None
+            else np.fft.fft(self.ordered_centroids, axis=0)
+        )
         return {
-            band: spectral_energy_fraction(self._full_spectrum, band) for band in self.bands
+            band: spectral_energy_fraction(full_spectrum, band) for band in self.bands
         }
 
     def ordering_report(self) -> dict[str, float]:
@@ -390,6 +491,7 @@ class SSFRRouter:
             self.centroids[shard_id] = value
             self.ordered_centroids[position] = value
             self._refresh_spectral_artifacts()
+            self._full_spectrum = None
             mode = "incremental_dft"
         else:
             updated = self.centroids.copy()

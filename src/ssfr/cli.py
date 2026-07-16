@@ -143,6 +143,7 @@ def _command_search(args: argparse.Namespace) -> int:
             "route": {
                 "selected_shards": result.search.route.shard_ids.tolist(),
                 "used_band": result.search.route.used_band,
+                "route_mode": result.search.route.route_mode,
                 "centroid_ranking_certified": (
                     result.search.route.centroid_ranking_certified
                 ),

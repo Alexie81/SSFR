@@ -40,6 +40,7 @@ class RouteResult:
     vector_pruning_certified: bool
     used_exact_fallback: bool
     latency_ms: float
+    route_mode: str = "spectral"
 
 
 @dataclass(frozen=True)

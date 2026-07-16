@@ -22,6 +22,7 @@ class DistributedSSFRSearch:
         shard_indexes: dict[int, LocalShardIndex],
         *,
         max_workers: int | None = None,
+        execution_mode: str = "auto",
     ) -> None:
         if not router.fitted:
             raise RuntimeError("router must be fitted")
@@ -31,9 +32,28 @@ class DistributedSSFRSearch:
         dimensions = {index.dimension for index in shard_indexes.values()}
         if dimensions != {router.dimension}:
             raise ValueError("all local indexes must match the router dimension")
+        if execution_mode not in {"auto", "sequential", "threaded"}:
+            raise ValueError("execution_mode must be auto, sequential, or threaded")
         self.router = router
         self.shard_indexes = shard_indexes
         self.max_workers = max_workers
+        self.execution_mode = execution_mode
+        self._executor: ThreadPoolExecutor | None = None
+
+    def _should_use_threads(self, selected_shards: list[int]) -> bool:
+        if self.execution_mode == "sequential":
+            return False
+        if self.execution_mode == "threaded":
+            return len(selected_shards) > 1
+        # NumPy and local HNSW calls are already native and very short. A Python
+        # thread-pool dispatch costs more than the work for typical local shards.
+        # Remote/I/O adapters should opt into execution_mode="threaded".
+        return False
+
+    def close(self) -> None:
+        if self._executor is not None:
+            self._executor.shutdown(wait=True)
+            self._executor = None
 
     def search(
         self,
@@ -60,9 +80,15 @@ class DistributedSSFRSearch:
             )
 
         selected_shards = [int(value) for value in route.shard_ids]
-        worker_count = self.max_workers or min(32, max(1, len(selected_shards)))
-        with ThreadPoolExecutor(max_workers=worker_count) as executor:
-            local_results = list(executor.map(run, selected_shards))
+        if self._should_use_threads(selected_shards):
+            if self._executor is None:
+                worker_count = self.max_workers or min(
+                    32, max(1, len(selected_shards))
+                )
+                self._executor = ThreadPoolExecutor(max_workers=worker_count)
+            local_results = list(self._executor.map(run, selected_shards))
+        else:
+            local_results = [run(shard_id) for shard_id in selected_shards]
         local_done = perf_counter()
 
         non_empty = [(ids, scores) for ids, scores in local_results if ids.size]

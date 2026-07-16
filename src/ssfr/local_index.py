@@ -28,13 +28,12 @@ class LocalShardIndex:
         hnsw_ef_construction: int = 200,
         hnsw_m: int = 16,
         hnsw_ef_search: int = 64,
+        auto_hnsw_threshold: int = 10_000,
     ) -> None:
         if backend not in {"auto", "exact", "hnsw", "faiss", "diskann"}:
             raise ValueError("backend must be auto, exact, hnsw, faiss, or diskann")
         if distance_metric not in {"cosine", "euclidean"}:
             raise ValueError("distance_metric must be cosine or euclidean")
-        if backend == "auto":
-            backend = "hnsw" if backend_available("hnsw") else "exact"
         if backend == "diskann":
             raise NotImplementedError(
                 "DiskANN is represented by an adapter boundary but is not implemented"
@@ -50,6 +49,9 @@ class LocalShardIndex:
         self.hnsw_ef_construction = int(hnsw_ef_construction)
         self.hnsw_m = int(hnsw_m)
         self.hnsw_ef_search = int(hnsw_ef_search)
+        self.auto_hnsw_threshold = int(auto_hnsw_threshold)
+        if self.auto_hnsw_threshold < 1:
+            raise ValueError("auto_hnsw_threshold must be at least 1")
         self.vectors: np.ndarray | None = None
         self.ids: np.ndarray | None = None
         self._index: object | None = None
@@ -83,6 +85,13 @@ class LocalShardIndex:
             raise ValueError("vectors contain non-finite values")
         self.vectors = np.ascontiguousarray(matrix)
         self.ids = identifiers.copy()
+        if self.backend == "auto":
+            self.backend = (
+                "hnsw"
+                if matrix.shape[0] >= self.auto_hnsw_threshold
+                and backend_available("hnsw")
+                else "exact"
+            )
         self._build_backend()
 
     def _build_backend(self) -> None:
@@ -208,6 +217,7 @@ class LocalShardIndex:
             "hnsw_ef_construction": self.hnsw_ef_construction,
             "hnsw_m": self.hnsw_m,
             "hnsw_ef_search": self.hnsw_ef_search,
+            "auto_hnsw_threshold": self.auto_hnsw_threshold,
             "item_count": self.item_count,
             "dimension": self.dimension,
         }
@@ -231,6 +241,7 @@ class LocalShardIndex:
             hnsw_ef_construction=metadata["hnsw_ef_construction"],
             hnsw_m=metadata["hnsw_m"],
             hnsw_ef_search=metadata["hnsw_ef_search"],
+            auto_hnsw_threshold=metadata.get("auto_hnsw_threshold", 10_000),
         )
         index.vectors = np.load(directory / "vectors.npy", allow_pickle=False)
         index.ids = np.load(directory / "ids.npy", allow_pickle=False)
