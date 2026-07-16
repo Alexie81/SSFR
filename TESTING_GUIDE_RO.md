@@ -375,7 +375,7 @@ matrix multiplication sau memorie spectrală prea mare.
   --band 256 `
   --probe-shards 32 `
   --parallel-shards 32 `
-  --router-ms 2 `
+  --router-ms 2.971 `
   --local-shard-p95-ms 8 `
   --network-p95-ms 1.5 `
   --merge-ms 0.5
@@ -399,7 +399,7 @@ Pentru a măsura fizic numai matricea routerului 16.384×768:
   --queries 100 `
   --probe-shards 32 `
   --max-spectral-attempts 0 `
-  --native-threads 8
+  --native-threads 12
 ```
 
 Acest test alocă centroizii reali, dar zero vectori de produse. Rezultatul este

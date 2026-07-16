@@ -9,4 +9,4 @@ ordering_method: recursive_pca
 distance_metric: cosine
 normalize_vectors: true
 random_seed: 42
-max_spectral_attempts: 2
+max_spectral_attempts: 0

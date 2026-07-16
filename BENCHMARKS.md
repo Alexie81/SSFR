@@ -45,6 +45,38 @@ It compares global exact search, global HNSW when installed, exhaustive centroid
 routing plus local search, hierarchical routing plus local search, and SSFR plus
 local search.
 
+## Physical large-router benchmark
+
+```bash
+python benchmarks/benchmark_large_router.py \
+  --shards 16384 \
+  --dimensions 768 \
+  --queries 100 \
+  --probe-shards 32 \
+  --max-spectral-attempts 0 \
+  --native-threads 12
+```
+
+This physically allocates and times the 16,384 x 768 centroid router, but loads no
+item vectors. It reports latency percentiles, routing modes, and router memory under
+`reports/large_router/benchmark.json`.
+
+## One-billion-item capacity estimate
+
+```bash
+python benchmarks/estimate_billion_scale.py \
+  --items 1000000000 \
+  --shards 16384 \
+  --dimensions 768 \
+  --band 256 \
+  --probe-shards 32 \
+  --parallel-shards 32
+```
+
+This is a capacity model, not a physical billion-vector benchmark. End-to-end
+latency is emitted only when measured router, shard, network, and merge latencies
+are supplied explicitly.
+
 ## Required interpretation
 
 Inspect `kill_criteria` in the generated report. A benchmark where SSFR loses is not
