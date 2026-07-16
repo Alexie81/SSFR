@@ -12,9 +12,6 @@ from .certificates import certify_top_b, score_intervals, top_indices
 from .metrics import normalize_rows, normalize_vector, ordering_quality
 from .ordering import build_order, validate_order
 from .spectral import (
-    frequency_indices,
-    reconstruct_centroids,
-    reconstruct_scores,
     residual_norms,
     sanitize_bands,
     spectral_energy_fraction,
@@ -101,7 +98,12 @@ class SSFRRouter:
         full_rfft = np.ascontiguousarray(self._full_spectrum[:rfft_size])
         full_band = self.ordered_centroids.shape[0] // 2
         partial_bands = [band for band in self.bands if band < full_band]
-        maximum_stored_band = max(partial_bands, default=-1)
+        attempted_partial_bands = (
+            partial_bands
+            if self.config.max_spectral_attempts is None
+            else partial_bands[: self.config.max_spectral_attempts]
+        )
+        maximum_stored_band = max(attempted_partial_bands, default=-1)
         self._rfft_payload = (
             np.ascontiguousarray(full_rfft[: maximum_stored_band + 1])
             if maximum_stored_band >= 0
@@ -121,7 +123,13 @@ class SSFRRouter:
                     self.ordered_centroids.shape[0], dtype=np.float64
                 )
                 continue
-            self.spectral_payloads[band] = self._rfft_payload[: band + 1]
+            self.spectral_payloads[band] = (
+                self._rfft_payload[: band + 1]
+                if band <= maximum_stored_band
+                else np.empty(
+                    (0, self.ordered_centroids.shape[1]), dtype=np.complex128
+                )
+            )
             truncated = np.zeros_like(full_rfft)
             truncated[: band + 1] = full_rfft[: band + 1]
             reconstructed = np.fft.irfft(
@@ -182,6 +190,7 @@ class SSFRRouter:
             raise RuntimeError("spectral payload is unavailable")
         half_spectrum = np.zeros(self.shard_count // 2 + 1, dtype=np.complex128)
         previous_band = -1
+        spectral_attempts = 0
         for band in self.bands:
             if band >= full_band:
                 exact_scores = self.centroids @ vector
@@ -198,6 +207,26 @@ class SSFRRouter:
                     latency_ms=(perf_counter() - started) * 1000.0,
                     route_mode="full_band_exact_fast_path",
                 )
+            if (
+                self.config.max_spectral_attempts is not None
+                and spectral_attempts >= self.config.max_spectral_attempts
+            ):
+                if full_band in self.bands:
+                    exact_scores = self.centroids @ vector
+                    selected = top_indices(exact_scores, count)
+                    return RouteResult(
+                        shard_ids=selected,
+                        approximate_scores=exact_scores,
+                        lower_bounds=exact_scores.copy(),
+                        upper_bounds=exact_scores.copy(),
+                        used_band=full_band,
+                        centroid_ranking_certified=True,
+                        vector_pruning_certified=False,
+                        used_exact_fallback=False,
+                        latency_ms=(perf_counter() - started) * 1000.0,
+                        route_mode="cost_aware_full_band_exact_fast_path",
+                    )
+                break
             start_frequency = previous_band + 1
             if start_frequency <= band:
                 half_spectrum[start_frequency : band + 1] = (
@@ -213,6 +242,7 @@ class SSFRRouter:
             selected, certified, _ = certify_top_b(scores, lower, upper, count)
             last = selected, scores, lower, upper, band
             previous_band = band
+            spectral_attempts += 1
             if certified:
                 return RouteResult(
                     shard_ids=selected,
@@ -244,7 +274,10 @@ class SSFRRouter:
             )
 
         if last is None:  # defensive; fit always creates at least one band
-            raise RuntimeError("no spectral band is available")
+            raise RuntimeError(
+                "no spectral route was attempted; enable exact_fallback, include "
+                "the full Fourier band, or increase max_spectral_attempts"
+            )
         selected, scores, lower, upper, band = last
         return RouteResult(
             shard_ids=selected,
@@ -322,6 +355,7 @@ class SSFRRouter:
         )
         previous_band = -1
         full_band = self.shard_count // 2
+        spectral_attempts = 0
         for band in self.bands:
             if unresolved.size == 0:
                 break
@@ -344,6 +378,32 @@ class SSFRRouter:
                         route_mode="full_band_exact_fast_path",
                     )
                 unresolved = np.empty(0, dtype=np.int64)
+                break
+            if (
+                self.config.max_spectral_attempts is not None
+                and spectral_attempts >= self.config.max_spectral_attempts
+            ):
+                if full_band in self.bands:
+                    exact_scores = matrix[unresolved] @ self.centroids.T
+                    elapsed_per_query = (
+                        perf_counter() - started
+                    ) * 1000.0 / batch_size
+                    for local_position, query_id in enumerate(unresolved):
+                        scores = exact_scores[local_position]
+                        selected = top_indices(scores, count)
+                        results[int(query_id)] = RouteResult(
+                            shard_ids=selected,
+                            approximate_scores=scores.copy(),
+                            lower_bounds=scores.copy(),
+                            upper_bounds=scores.copy(),
+                            used_band=full_band,
+                            centroid_ranking_certified=True,
+                            vector_pruning_certified=False,
+                            used_exact_fallback=False,
+                            latency_ms=elapsed_per_query,
+                            route_mode="cost_aware_full_band_exact_fast_path",
+                        )
+                    unresolved = np.empty(0, dtype=np.int64)
                 break
             active_queries = matrix[unresolved]
             start_frequency = previous_band + 1
@@ -397,6 +457,7 @@ class SSFRRouter:
                     next_unresolved.append(int(query_id))
             unresolved = np.asarray(next_unresolved, dtype=np.int64)
             previous_band = band
+            spectral_attempts += 1
 
         if unresolved.size and self.config.exact_fallback:
             exact_scores = matrix[unresolved] @ self.centroids.T
@@ -417,6 +478,11 @@ class SSFRRouter:
                     route_mode="exact_fallback",
                 )
         elif unresolved.size:
+            if not last_values:
+                raise RuntimeError(
+                    "no spectral route was attempted; enable exact_fallback, include "
+                    "the full Fourier band, or increase max_spectral_attempts"
+                )
             elapsed_per_query = (perf_counter() - started) * 1000.0 / batch_size
             for query_id in unresolved:
                 selected, scores, lower, upper, band = last_values[int(query_id)]

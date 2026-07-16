@@ -9,6 +9,7 @@ from pathlib import Path
 from .benchmarking import run_csv_catalog_benchmark
 from .catalog import CatalogIndex, format_catalog_search
 from .console import configure_utf8_output
+from .performance import limit_native_threads
 
 
 def _integer_tuple(value: str) -> tuple[int, ...]:
@@ -50,6 +51,8 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--strict-csv", action="store_true")
     build.add_argument("--force-embeddings", action="store_true")
     build.add_argument("--seed", type=int, default=42)
+    build.add_argument("--max-spectral-attempts", type=int, default=2)
+    build.add_argument("--native-threads", type=int, default=1)
 
     search = subparsers.add_parser("search", help="search a previously built catalog")
     search.add_argument("--index", required=True)
@@ -70,6 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--report", default="reports/csv_search_evaluation.csv"
     )
     search.add_argument("--json", action="store_true", dest="as_json")
+    search.add_argument("--native-threads", type=int, default=1)
 
     benchmark = subparsers.add_parser(
         "benchmark-csv", help="run measured baselines on a CSV catalog"
@@ -83,6 +87,8 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--bands", type=_integer_tuple, default=(1, 2, 4))
     benchmark.add_argument("--top-k", type=int, default=5)
     benchmark.add_argument("--seed", type=int, default=42)
+    benchmark.add_argument("--native-threads", type=int, default=1)
+    benchmark.add_argument("--max-spectral-attempts", type=int, default=0)
     return parser
 
 
@@ -102,6 +108,7 @@ def _command_build(args: argparse.Namespace) -> int:
         tolerant_csv=not args.strict_csv,
         force_embeddings=args.force_embeddings,
         random_seed=args.seed,
+        max_spectral_attempts=args.max_spectral_attempts,
     )
     print(f"[SSFR] CSV loaded: {report['products_loaded']:,} valid products")
     cache = "cache hit" if report["embedding_cache_hit"] else "generated"
@@ -173,6 +180,7 @@ def _command_benchmark(args: argparse.Namespace) -> int:
         bands=args.bands,
         top_k=args.top_k,
         seed=args.seed,
+        max_spectral_attempts=args.max_spectral_attempts,
     )
     print(json.dumps(report, indent=2, ensure_ascii=False))
     return 0
@@ -182,12 +190,19 @@ def main(argv: list[str] | None = None) -> int:
     configure_utf8_output()
     parser = build_parser()
     args = parser.parse_args(argv)
+    native_thread_limiter = limit_native_threads(args.native_threads)
     if args.command == "build":
-        return _command_build(args)
+        result = _command_build(args)
+        del native_thread_limiter
+        return result
     if args.command == "search":
-        return _command_search(args)
+        result = _command_search(args)
+        del native_thread_limiter
+        return result
     if args.command == "benchmark-csv":
-        return _command_benchmark(args)
+        result = _command_benchmark(args)
+        del native_thread_limiter
+        return result
     parser.error(f"unknown command: {args.command}")
     return 2
 

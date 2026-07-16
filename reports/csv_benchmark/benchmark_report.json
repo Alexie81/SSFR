@@ -18,7 +18,8 @@
     ],
     "top_k": 5,
     "physical_vectors_loaded": true,
-    "local_index_backend": "hnsw"
+    "local_index_backend": "hnsw",
+    "max_spectral_attempts": 0
   },
   "build": {
     "products_loaded": 20,
@@ -32,18 +33,18 @@
       4
     ],
     "local_index_backend": "hnsw",
-    "build_time_seconds": 2.637249199906364,
+    "build_time_seconds": 1.0005567000480369,
     "artifact_path": "D:\\Alexie\\algoritmi\\SSFR - SpectraShard Fourier Router\\artifacts\\benchmark_products_hnsw"
   },
   "methods": {
     "global_exact": {
       "latency_ms": {
-        "mean": 0.041540005865196385,
-        "p50": 0.03950006794184446,
-        "p95": 0.06011995719745753,
-        "p99": 0.07098397472873329
+        "mean": 0.016280007548630238,
+        "p50": 0.012499978765845299,
+        "p95": 0.03169002011418337,
+        "p99": 0.06153805181384084
       },
-      "queries_per_second": 24073.179075736087,
+      "queries_per_second": 61425.0329438046,
       "centroid_top_b_recall": null,
       "vector_top_k_recall": 1.0,
       "fraction_certified": 0.0,
@@ -51,16 +52,17 @@
       "mean_used_spectral_band": 0.0,
       "mean_shards_accessed": 8.0,
       "mean_local_candidates_available": 20.0,
-      "memory_bytes": 31120
+      "memory_bytes": 31120,
+      "route_mode_counts": {}
     },
     "global_hnsw": {
       "latency_ms": {
-        "mean": 0.06762001818666856,
-        "p50": 0.06330001633614302,
-        "p95": 0.09367009624838828,
-        "p99": 0.09753406047821045
+        "mean": 0.025153338598708313,
+        "p50": 0.02050003968179226,
+        "p95": 0.04644996952265499,
+        "p99": 0.05848999600857495
       },
-      "queries_per_second": 14788.52012786285,
+      "queries_per_second": 39756.1538829423,
       "centroid_top_b_recall": null,
       "vector_top_k_recall": 1.0,
       "fraction_certified": 0.0,
@@ -69,16 +71,17 @@
       "mean_shards_accessed": 1.0,
       "mean_local_candidates_available": 20.0,
       "memory_bytes": 31120,
+      "route_mode_counts": {},
       "memory_note": "Python arrays only; native HNSW graph allocation is not included."
     },
     "exhaustive_centroid_plus_local_hnsw": {
       "latency_ms": {
-        "mean": 0.19864666586120924,
-        "p50": 0.1610000617802143,
-        "p95": 0.346370053011924,
-        "p99": 0.3782340348698198
+        "mean": 0.08048003073781729,
+        "p50": 0.06530003156512976,
+        "p95": 0.11959006078541277,
+        "p99": 0.12423803098499775
       },
-      "queries_per_second": 5034.063852341129,
+      "queries_per_second": 12425.442570440067,
       "centroid_top_b_recall": null,
       "vector_top_k_recall": 0.8266666666666665,
       "fraction_certified": 1.0,
@@ -86,16 +89,17 @@
       "mean_used_spectral_band": 0.0,
       "mean_shards_accessed": 4.666666666666667,
       "mean_local_candidates_available": 12.4,
-      "memory_bytes": 55696
+      "memory_bytes": 55696,
+      "route_mode_counts": {}
     },
     "hierarchical_plus_local_hnsw": {
       "latency_ms": {
-        "mean": 0.24364000031103691,
-        "p50": 0.21399999968707561,
-        "p95": 0.5586500279605384,
-        "p99": 0.8198899962007997
+        "mean": 0.08296001857767503,
+        "p50": 0.07139996159821749,
+        "p95": 0.11582003207877278,
+        "p99": 0.11604396859183908
       },
-      "queries_per_second": 4104.416346754946,
+      "queries_per_second": 12053.999229324007,
       "centroid_top_b_recall": null,
       "vector_top_k_recall": 0.84,
       "fraction_certified": 0.0,
@@ -103,36 +107,40 @@
       "mean_used_spectral_band": 0.0,
       "mean_shards_accessed": 4.666666666666667,
       "mean_local_candidates_available": 12.666666666666666,
-      "memory_bytes": 64944
+      "memory_bytes": 64944,
+      "route_mode_counts": {}
     },
     "ssfr_plus_local_hnsw": {
       "latency_ms": {
-        "mean": 1.7819800103704135,
-        "p50": 1.7442000098526478,
-        "p95": 2.681350079365074,
-        "p99": 3.0170700931921597
+        "mean": 0.07867333479225636,
+        "p50": 0.06410002242773771,
+        "p95": 0.13147998834028823,
+        "p99": 0.2141360309906303
       },
-      "queries_per_second": 561.1735228119275,
+      "queries_per_second": 12710.786985712315,
       "centroid_top_b_recall": null,
       "vector_top_k_recall": 0.8266666666666665,
       "fraction_certified": 1.0,
       "fraction_exact_fallback": 0.0,
-      "mean_used_spectral_band": 3.0,
+      "mean_used_spectral_band": 4.0,
       "mean_shards_accessed": 4.666666666666667,
       "mean_local_candidates_available": 12.4,
-      "memory_bytes": 154320
+      "memory_bytes": 56016,
+      "route_mode_counts": {
+        "cost_aware_full_band_exact_fast_path": 15
+      }
     }
   },
   "by_probe_shards": {
     "2": {
       "global_exact": {
         "latency_ms": {
-          "mean": 0.045819999650120735,
-          "p50": 0.036800047382712364,
-          "p95": 0.06931996904313564,
-          "p99": 0.07282397709786892
+          "mean": 0.02452000044286251,
+          "p50": 0.015199999324977398,
+          "p95": 0.05834004841744899,
+          "p99": 0.06686805747449398
         },
-        "queries_per_second": 21824.530939239434,
+        "queries_per_second": 40783.033521155114,
         "centroid_top_b_recall": null,
         "vector_top_k_recall": 1.0,
         "fraction_certified": 0.0,
@@ -140,16 +148,17 @@
         "mean_used_spectral_band": 0.0,
         "mean_shards_accessed": 8.0,
         "mean_local_candidates_available": 20.0,
-        "memory_bytes": 31120
+        "memory_bytes": 31120,
+        "route_mode_counts": {}
       },
       "global_hnsw": {
         "latency_ms": {
-          "mean": 0.06694002076983452,
-          "p50": 0.05570007488131523,
-          "p95": 0.08906000293791294,
-          "p99": 0.09101199917495251
+          "mean": 0.03331999760121107,
+          "p50": 0.025399960577487946,
+          "p95": 0.057199993170797825,
+          "p99": 0.060640000738203526
         },
-        "queries_per_second": 14938.746485280963,
+        "queries_per_second": 30012.006962559124,
         "centroid_top_b_recall": null,
         "vector_top_k_recall": 1.0,
         "fraction_certified": 0.0,
@@ -158,16 +167,17 @@
         "mean_shards_accessed": 1.0,
         "mean_local_candidates_available": 20.0,
         "memory_bytes": 31120,
+        "route_mode_counts": {},
         "memory_note": "Python arrays only; native HNSW graph allocation is not included."
       },
       "exhaustive_centroid_plus_local_hnsw": {
         "latency_ms": {
-          "mean": 0.10329997166991234,
-          "p50": 0.10249996557831764,
-          "p95": 0.11703998316079378,
-          "p99": 0.1186079764738679
+          "mean": 0.06322003901004791,
+          "p50": 0.05250005051493645,
+          "p95": 0.11126000899821518,
+          "p99": 0.12257202062755823
         },
-        "queries_per_second": 9680.544765253455,
+        "queries_per_second": 15817.769423411213,
         "centroid_top_b_recall": null,
         "vector_top_k_recall": 0.64,
         "fraction_certified": 1.0,
@@ -175,16 +185,17 @@
         "mean_used_spectral_band": 0.0,
         "mean_shards_accessed": 2.0,
         "mean_local_candidates_available": 6.0,
-        "memory_bytes": 55696
+        "memory_bytes": 55696,
+        "route_mode_counts": {}
       },
       "hierarchical_plus_local_hnsw": {
         "latency_ms": {
-          "mean": 0.1113200094550848,
-          "p50": 0.1194999786093831,
-          "p95": 0.12013998348265886,
-          "p99": 0.12018798384815454
+          "mean": 0.06352001801133156,
+          "p50": 0.06150000263005495,
+          "p95": 0.08061996195465326,
+          "p99": 0.08340394590049982
         },
-        "queries_per_second": 8983.110986919904,
+        "queries_per_second": 15743.068583853463,
         "centroid_top_b_recall": null,
         "vector_top_k_recall": 0.68,
         "fraction_certified": 0.0,
@@ -192,16 +203,17 @@
         "mean_used_spectral_band": 0.0,
         "mean_shards_accessed": 2.0,
         "mean_local_candidates_available": 6.8,
-        "memory_bytes": 64944
+        "memory_bytes": 64944,
+        "route_mode_counts": {}
       },
       "ssfr_plus_local_hnsw": {
         "latency_ms": {
-          "mean": 1.333460002206266,
-          "p50": 1.270500011742115,
-          "p95": 1.7962800338864326,
-          "p99": 1.891816034913063
+          "mean": 0.061920005828142166,
+          "p50": 0.05539995618164539,
+          "p95": 0.07442010100930929,
+          "p99": 0.07448410149663687
         },
-        "queries_per_second": 749.9287555273182,
+        "queries_per_second": 16149.869280947447,
         "centroid_top_b_recall": null,
         "vector_top_k_recall": 0.64,
         "fraction_certified": 1.0,
@@ -209,18 +221,21 @@
         "mean_used_spectral_band": 4.0,
         "mean_shards_accessed": 2.0,
         "mean_local_candidates_available": 6.0,
-        "memory_bytes": 154320
+        "memory_bytes": 56016,
+        "route_mode_counts": {
+          "cost_aware_full_band_exact_fast_path": 5
+        }
       }
     },
     "4": {
       "global_exact": {
         "latency_ms": {
-          "mean": 0.04129998851567507,
-          "p50": 0.03950006794184446,
-          "p95": 0.05217995494604111,
-          "p99": 0.05387594923377037
+          "mean": 0.011740019544959068,
+          "p50": 0.011499971151351929,
+          "p95": 0.012700073421001434,
+          "p99": 0.012700092047452927
         },
-        "queries_per_second": 24213.081793484234,
+        "queries_per_second": 85178.73383178312,
         "centroid_top_b_recall": null,
         "vector_top_k_recall": 1.0,
         "fraction_certified": 0.0,
@@ -228,16 +243,17 @@
         "mean_used_spectral_band": 0.0,
         "mean_shards_accessed": 8.0,
         "mean_local_candidates_available": 20.0,
-        "memory_bytes": 31120
+        "memory_bytes": 31120,
+        "route_mode_counts": {}
       },
       "global_hnsw": {
         "latency_ms": {
-          "mean": 0.0736800255253911,
-          "p50": 0.07289997301995754,
-          "p95": 0.0971200643107295,
-          "p99": 0.09822405409067869
+          "mean": 0.019819987937808037,
+          "p50": 0.020200037397444248,
+          "p95": 0.021460046991705894,
+          "p99": 0.02165204845368862
         },
-        "queries_per_second": 13572.199424054039,
+        "queries_per_second": 50454.11748674321,
         "centroid_top_b_recall": null,
         "vector_top_k_recall": 1.0,
         "fraction_certified": 0.0,
@@ -246,16 +262,17 @@
         "mean_shards_accessed": 1.0,
         "mean_local_candidates_available": 20.0,
         "memory_bytes": 31120,
+        "route_mode_counts": {},
         "memory_note": "Python arrays only; native HNSW graph allocation is not included."
       },
       "exhaustive_centroid_plus_local_hnsw": {
         "latency_ms": {
-          "mean": 0.1791799906641245,
-          "p50": 0.1610000617802143,
-          "p95": 0.23883995600044727,
-          "p99": 0.25008794851601124
+          "mean": 0.06904001347720623,
+          "p50": 0.06410002242773771,
+          "p95": 0.08666000794619322,
+          "p99": 0.09093200322240591
         },
-        "queries_per_second": 5580.980310879213,
+        "queries_per_second": 14484.35406708246,
         "centroid_top_b_recall": null,
         "vector_top_k_recall": 0.8400000000000001,
         "fraction_certified": 1.0,
@@ -263,16 +280,17 @@
         "mean_used_spectral_band": 0.0,
         "mean_shards_accessed": 4.0,
         "mean_local_candidates_available": 11.2,
-        "memory_bytes": 55696
+        "memory_bytes": 55696,
+        "route_mode_counts": {}
       },
       "hierarchical_plus_local_hnsw": {
         "latency_ms": {
-          "mean": 0.21719997748732567,
-          "p50": 0.21399999968707561,
-          "p95": 0.30915995594114065,
-          "p99": 0.3129519475623965
+          "mean": 0.07150003220885992,
+          "p50": 0.07030006963759661,
+          "p95": 0.07740000728517771,
+          "p99": 0.07860001642256975
         },
-        "queries_per_second": 4604.0520425852865,
+        "queries_per_second": 13986.007685687238,
         "centroid_top_b_recall": null,
         "vector_top_k_recall": 0.8400000000000001,
         "fraction_certified": 0.0,
@@ -280,16 +298,17 @@
         "mean_used_spectral_band": 0.0,
         "mean_shards_accessed": 4.0,
         "mean_local_candidates_available": 11.2,
-        "memory_bytes": 64944
+        "memory_bytes": 64944,
+        "route_mode_counts": {}
       },
       "ssfr_plus_local_hnsw": {
         "latency_ms": {
-          "mean": 1.670980011112988,
-          "p50": 1.667700009420514,
-          "p95": 1.9063000101596117,
-          "p99": 1.9114200118929148
+          "mean": 0.06111999973654747,
+          "p50": 0.06160000339150429,
+          "p95": 0.0639200210571289,
+          "p99": 0.06406402215361595
         },
-        "queries_per_second": 598.4512042929413,
+        "queries_per_second": 16361.256615026414,
         "centroid_top_b_recall": null,
         "vector_top_k_recall": 0.8400000000000001,
         "fraction_certified": 1.0,
@@ -297,18 +316,21 @@
         "mean_used_spectral_band": 4.0,
         "mean_shards_accessed": 4.0,
         "mean_local_candidates_available": 11.2,
-        "memory_bytes": 154320
+        "memory_bytes": 56016,
+        "route_mode_counts": {
+          "cost_aware_full_band_exact_fast_path": 5
+        }
       }
     },
     "8": {
       "global_exact": {
         "latency_ms": {
-          "mean": 0.03750002942979336,
-          "p50": 0.04039995837956667,
-          "p95": 0.04162008408457041,
-          "p99": 0.041684084571897984
+          "mean": 0.012580002658069134,
+          "p50": 0.012499978765845299,
+          "p95": 0.01492002047598362,
+          "p99": 0.015224004164338112
         },
-        "queries_per_second": 26666.645738830037,
+        "queries_per_second": 79491.23916588162,
         "centroid_top_b_recall": null,
         "vector_top_k_recall": 1.0,
         "fraction_certified": 0.0,
@@ -316,16 +338,17 @@
         "mean_used_spectral_band": 0.0,
         "mean_shards_accessed": 8.0,
         "mean_local_candidates_available": 20.0,
-        "memory_bytes": 31120
+        "memory_bytes": 31120,
+        "route_mode_counts": {}
       },
       "global_hnsw": {
         "latency_ms": {
-          "mean": 0.062240008264780045,
-          "p50": 0.06330001633614302,
-          "p95": 0.07016006857156754,
-          "p99": 0.07027206942439079
+          "mean": 0.022320030257105827,
+          "p50": 0.020900042727589607,
+          "p95": 0.028500007465481758,
+          "p99": 0.02961999736726284
         },
-        "queries_per_second": 16066.835912775308,
+        "queries_per_second": 44802.80664859937,
         "centroid_top_b_recall": null,
         "vector_top_k_recall": 1.0,
         "fraction_certified": 0.0,
@@ -334,16 +357,17 @@
         "mean_shards_accessed": 1.0,
         "mean_local_candidates_available": 20.0,
         "memory_bytes": 31120,
+        "route_mode_counts": {},
         "memory_note": "Python arrays only; native HNSW graph allocation is not included."
       },
       "exhaustive_centroid_plus_local_hnsw": {
         "latency_ms": {
-          "mean": 0.3134600352495909,
-          "p50": 0.3255000337958336,
-          "p95": 0.37482003681361675,
-          "p99": 0.3839240316301584
+          "mean": 0.10918003972619772,
+          "p50": 0.10679999832063913,
+          "p95": 0.11576006654649973,
+          "p99": 0.11683207470923662
         },
-        "queries_per_second": 3190.199347753392,
+        "queries_per_second": 9159.183331566881,
         "centroid_top_b_recall": null,
         "vector_top_k_recall": 1.0,
         "fraction_certified": 1.0,
@@ -351,16 +375,17 @@
         "mean_used_spectral_band": 0.0,
         "mean_shards_accessed": 8.0,
         "mean_local_candidates_available": 20.0,
-        "memory_bytes": 55696
+        "memory_bytes": 55696,
+        "route_mode_counts": {}
       },
       "hierarchical_plus_local_hnsw": {
         "latency_ms": {
-          "mean": 0.40240001399070024,
-          "p50": 0.27469999622553587,
-          "p95": 0.791899999603629,
-          "p99": 0.866539990529418
+          "mean": 0.1138600055128336,
+          "p50": 0.11329993139952421,
+          "p95": 0.11601997539401054,
+          "p99": 0.11608395725488663
         },
-        "queries_per_second": 2485.089376818736,
+        "queries_per_second": 8782.715190429937,
         "centroid_top_b_recall": null,
         "vector_top_k_recall": 1.0,
         "fraction_certified": 0.0,
@@ -368,29 +393,32 @@
         "mean_used_spectral_band": 0.0,
         "mean_shards_accessed": 8.0,
         "mean_local_candidates_available": 20.0,
-        "memory_bytes": 64944
+        "memory_bytes": 64944,
+        "route_mode_counts": {}
       },
       "ssfr_plus_local_hnsw": {
         "latency_ms": {
-          "mean": 2.3415000177919865,
-          "p50": 2.224199939519167,
-          "p95": 2.9811000917106867,
-          "p99": 3.0770200956612825
+          "mean": 0.11297999881207943,
+          "p50": 0.08300004992634058,
+          "p95": 0.20528002642095086,
+          "p99": 0.22889603860676289
         },
-        "queries_per_second": 427.0766570153568,
+        "queries_per_second": 8851.124185824327,
         "centroid_top_b_recall": null,
         "vector_top_k_recall": 1.0,
         "fraction_certified": 1.0,
         "fraction_exact_fallback": 0.0,
-        "mean_used_spectral_band": 1.0,
+        "mean_used_spectral_band": 4.0,
         "mean_shards_accessed": 8.0,
         "mean_local_candidates_available": 20.0,
-        "memory_bytes": 154320
+        "memory_bytes": 56016,
+        "route_mode_counts": {
+          "cost_aware_full_band_exact_fast_path": 5
+        }
       }
     }
   },
   "kill_criteria": [
-    "Measured SSFR vector Recall@k was below 0.95.",
-    "SSFR end-to-end latency did not improve on exhaustive centroid routing."
+    "Measured SSFR vector Recall@k was below 0.95."
   ]
 }

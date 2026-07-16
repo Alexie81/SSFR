@@ -10,10 +10,14 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, model_validator
 
 from ssfr.catalog import CatalogIndex
+from ssfr.performance import limit_native_threads
 
 
-app = FastAPI(title="SSFR API", version="0.1.0")
+app = FastAPI(title="SSFR API", version="0.2.0")
 _catalog: CatalogIndex | None = None
+_native_thread_limiter = limit_native_threads(
+    int(os.environ.get("SSFR_NATIVE_THREADS", "1"))
+)
 
 
 class BuildRequest(BaseModel):
@@ -24,6 +28,7 @@ class BuildRequest(BaseModel):
     probe_shards: int = Field(default=16, ge=1)
     embedding_provider: str = "hash"
     local_index: str = "exact"
+    max_spectral_attempts: int = Field(default=2, ge=0)
 
 
 class SearchRequest(BaseModel):
@@ -77,6 +82,7 @@ def build_index(request: BuildRequest) -> dict[str, Any]:
             probe_shards=request.probe_shards,
             embedding_provider=request.embedding_provider,
             local_index_backend=request.local_index,
+            max_spectral_attempts=request.max_spectral_attempts,
         )
         return report
     except Exception as exc:

@@ -56,6 +56,40 @@ def test_full_band_route_equals_exact(
     assert np.array_equal(route.shard_ids, exact.shard_ids)
     assert not route.used_exact_fallback
     assert route.centroid_ranking_certified
+    assert route.route_mode == "full_band_exact_fast_path"
+
+
+def test_cost_aware_attempt_limit_uses_exact_fallback(
+    centroids: np.ndarray,
+    rng: np.random.Generator,
+) -> None:
+    router = SSFRRouter(
+        SSFRConfig(
+            spectral_bands=(0, 1, 2),
+            probe_shards=3,
+            exact_fallback=True,
+            max_spectral_attempts=1,
+        )
+    ).fit(centroids)
+    route = router.route(rng.normal(size=centroids.shape[1]))
+    assert route.used_exact_fallback
+    assert route.route_mode == "exact_fallback"
+
+
+def test_zero_attempts_jumps_to_full_band_fast_path(
+    centroids: np.ndarray,
+    rng: np.random.Generator,
+) -> None:
+    router = SSFRRouter(
+        SSFRConfig(
+            spectral_bands=(2, 4, 8),
+            probe_shards=3,
+            max_spectral_attempts=0,
+        )
+    ).fit(centroids)
+    route = router.route(rng.normal(size=centroids.shape[1]))
+    assert not route.used_exact_fallback
+    assert route.route_mode == "cost_aware_full_band_exact_fast_path"
 
 
 def test_unnormalized_query_intervals_cover_scores(

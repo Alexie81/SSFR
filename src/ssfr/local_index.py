@@ -164,6 +164,26 @@ class LocalShardIndex:
         allowed_ids: np.ndarray | set[object] | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         vector = self._prepare_query(query)
+        return self.search_prepared(
+            vector,
+            top_k,
+            allowed_ids=allowed_ids,
+        )
+
+    def search_prepared(
+        self,
+        query: np.ndarray,
+        top_k: int,
+        *,
+        allowed_ids: np.ndarray | set[object] | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Search with a query already validated and normalized for this metric."""
+
+        if not self.built:
+            raise RuntimeError("local index must be built before search")
+        vector = np.asarray(query, dtype=np.float32)
+        if vector.shape != (self.dimension,):
+            raise ValueError(f"query must have shape ({self.dimension},)")
         if top_k < 1:
             raise ValueError("top_k must be at least 1")
         assert self.ids is not None

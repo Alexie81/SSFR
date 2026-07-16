@@ -17,6 +17,7 @@ class SSFRConfig:
     distance_metric: str = "cosine"
     normalize_vectors: bool = True
     random_seed: int = 42
+    max_spectral_attempts: int | None = 2
 
     def __post_init__(self) -> None:
         bands = tuple(sorted({int(band) for band in self.spectral_bands if int(band) >= 0}))
@@ -26,6 +27,8 @@ class SSFRConfig:
             raise ValueError("probe_shards must be at least 1")
         if self.distance_metric not in {"cosine", "euclidean"}:
             raise ValueError("distance_metric must be 'cosine' or 'euclidean'")
+        if self.max_spectral_attempts is not None and self.max_spectral_attempts < 0:
+            raise ValueError("max_spectral_attempts must be non-negative or None")
         object.__setattr__(self, "spectral_bands", bands)
 
 

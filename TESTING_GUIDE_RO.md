@@ -56,6 +56,8 @@ deja create.
   pentru pragul top-k de vectori. Acesta este un certificat separat și mai puternic.
 - `exact_fallback`: routerul a calculat exact toate scorurile centroizilor deoarece
   benzile aproximative nu au certificat selecția.
+- `route_mode`: arată dacă s-a folosit spectrul, fast-path-ul benzii complete,
+  politica exactă „cost-aware” sau fallback-ul exact.
 - `Recall@k`: proporția rezultatelor oracle-ului exact global găsite de fluxul SSFR.
 
 Un fallback exact nu este o eroare. Este mecanismul conservator prin care routerul
@@ -276,12 +278,36 @@ Doar căutare pe indexul existent:
   --items 100000 `
   --shards 256 `
   --dimensions 96 `
-  --probe-shards 16 `
   --top-k 10
 ```
 
 Acest demo creează fizic 100.000 de vectori sintetici în memorie. El validează
 fluxul end-to-end, dar nu reprezintă dovadă pentru un catalog de un miliard.
+
+În modul implicit, demo-ul:
+
+1. limitează pool-urile native la un thread pentru operațiile matriciale mici;
+2. calibrează offline valorile `8,16,24,32,48,64`;
+3. alege cel mai mic `probe_shards` care atinge recall-ul mediu cerut;
+4. folosește `max_spectral_attempts=0` când fast-path-ul exact este mai potrivit
+   acestui router mic;
+5. rulează căutări încălzite și salvează rezultatul în
+   `reports/optimized_100k_demo.json`.
+
+Poți forța configurația măsurată pentru latență redusă:
+
+```powershell
+.\.venv\Scripts\python.exe demos\ecommerce_demo.py `
+  --items 100000 `
+  --shards 256 `
+  --probe-shards 32 `
+  --max-spectral-attempts 0 `
+  --native-threads 1 `
+  --latency-runs 300
+```
+
+`LocalShardIndex("auto")` păstrează NumPy exact sub 10.000 produse/shard și
+selectează HNSW peste acel prag dacă biblioteca este instalată.
 
 Pentru un smoke test rapid:
 
@@ -339,12 +365,53 @@ Verifică în JSON secțiunea `kill_criteria`. Ea raportează explicit situații
 SSFR nu este avantajos: bandă prea mare, fallback frecvent, latență mai slabă decât
 matrix multiplication sau memorie spectrală prea mare.
 
+### Estimarea explicită pentru un miliard
+
+```powershell
+.\.venv\Scripts\python.exe benchmarks\estimate_billion_scale.py `
+  --items 1000000000 `
+  --shards 16384 `
+  --dimensions 768 `
+  --band 256 `
+  --probe-shards 32 `
+  --parallel-shards 32 `
+  --router-ms 2 `
+  --local-shard-p95-ms 8 `
+  --network-p95-ms 1.5 `
+  --merge-ms 0.5
+```
+
+Fișierele apar în `reports/billion_scale_estimate/`. Latența este calculată numai
+din măsurătorile furnizate ca argumente. Fără ele, scriptul raportează capacitatea
+și numărul de operații, dar nu inventează o latență end-to-end.
+
+La aproximativ 61.000 produse/shard (`1 miliard / 16.384`), backendul `auto` alege
+HNSW. În producție, cele 16–64 de cereri trebuie executate în paralel pe noduri
+diferite; demo-ul single-process nu simulează rețeaua, SSD-urile sau concurența
+clusterului.
+
+Pentru a măsura fizic numai matricea routerului 16.384×768:
+
+```powershell
+.\.venv\Scripts\python.exe benchmarks\benchmark_large_router.py `
+  --shards 16384 `
+  --dimensions 768 `
+  --queries 100 `
+  --probe-shards 32 `
+  --max-spectral-attempts 0 `
+  --native-threads 8
+```
+
+Acest test alocă centroizii reali, dar zero vectori de produse. Rezultatul este
+salvat în `reports/large_router/benchmark.json`.
+
 ## 11. API FastAPI
 
 Pornește serverul:
 
 ```powershell
 $env:SSFR_INDEX_PATH = "artifacts/products"
+$env:SSFR_NATIVE_THREADS = "1"
 .\.venv\Scripts\python.exe -m uvicorn demos.api_demo:app `
   --host 127.0.0.1 `
   --port 8000
@@ -385,6 +452,11 @@ http://127.0.0.1:8000/docs
 ```
 
 Oprești serverul cu `Ctrl+C`.
+
+Pentru un router mare, de exemplu 16.384×768, testează
+`SSFR_NATIVE_THREADS=4`, `8` și `12`. Pentru indexuri locale mici, un singur thread
+are de obicei P95 mai stabil; pentru un fallback matricial mare, mai multe threaduri
+BLAS pot fi mai rapide. Alegerea se face prin benchmark pe serverul de producție.
 
 ## 12. Cum interpretezi corect rezultatele
 
@@ -463,6 +535,8 @@ Trebuie să primești eroarea `query text cannot be empty`.
 7. benchmarkul sintetic;
 8. pornirea API-ului și o cerere `/search`;
 9. opțional, demo-ul cu 100.000 de produse și HNSW.
+10. estimatorul de capacitate pentru un miliard, alimentat cu latențele reale ale
+    nodurilor tale.
 
 Această ordine separă corectitudinea matematică de performanță și face mai ușor de
 localizat orice problemă.

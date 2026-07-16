@@ -19,13 +19,20 @@ ordered centroid matrix, never over the embedding dimension.
 
 For every configured band, the router stores:
 
-- the unique frequency indices containing DC, low positive frequencies, and their
-  negative-frequency counterparts;
-- the complex Fourier rows at those indices;
+- an rFFT prefix containing DC and the retained non-negative frequencies;
 - one L2 reconstruction residual per original shard.
 
-At query time it computes `F_k @ q`, inserts those values into a zeroed score
-spectrum, applies IFFT, and restores original shard order.
+Nested bands share one runtime payload instead of duplicating the same frequencies.
+At query time the router projects each newly added frequency block once, applies
+IRFFT, and restores original shard order. A full Fourier band uses the equivalent
+exact centroid-matrix fast path. If a configurable number of spectral attempts
+fails, the cost-aware policy jumps to the exact path rather than paying for every
+remaining IFFT before fallback.
+
+The reference in-process implementation executes short NumPy and HNSW calls
+sequentially. Creating a Python thread pool per query was measured to cost more
+than the local work. Threaded execution is retained for remote or I/O-bound shard
+adapters, where requests genuinely overlap.
 
 ## Certification boundaries
 

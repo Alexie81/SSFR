@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from .spectral import frequency_indices
 from .types import ShardMetadata, SSFRConfig
 
 if TYPE_CHECKING:
@@ -67,7 +66,8 @@ def save_router(router: "SSFRRouter", path: str | Path) -> None:
 
     manifest = {
         "algorithm": "SSFR",
-        "version": "0.1.0",
+        "version": "0.2.0",
+        "spectral_layout": "rfft_prefix_v1",
         "embedding_dimension": router.dimension,
         "shard_count": router.shard_count,
         "distance_metric": router.config.distance_metric,
@@ -95,46 +95,12 @@ def load_router(path: str | Path) -> "SSFRRouter":
     config_payload = json.loads((directory / "config.json").read_text(encoding="utf-8"))
     config_payload["spectral_bands"] = tuple(config_payload["spectral_bands"])
     router = SSFRRouter(SSFRConfig(**config_payload))
-    router.centroids = np.load(directory / "exact_centroids.npy", allow_pickle=False)
-    router.order = np.load(directory / "order.npy", allow_pickle=False)
-    router.inverse_order = np.load(directory / "inverse_order.npy", allow_pickle=False)
-    router.ordered_centroids = np.ascontiguousarray(router.centroids[router.order])
-    router.bands = tuple(int(value) for value in manifest["bands"])
-    router.frequency_map = {
-        band: frequency_indices(router.centroids.shape[0], band) for band in router.bands
-    }
-    router.spectral_payloads = {
-        band: np.empty((0, router.centroids.shape[1]), dtype=np.complex128)
-        for band in router.bands
-    }
-    full_band = router.centroids.shape[0] // 2
-    partial_bands = [band for band in router.bands if band < full_band]
-    if partial_bands:
-        largest_partial = max(partial_bands)
-        largest_payload = np.load(
-            directory / f"spectral_payload_{largest_partial}.npy", allow_pickle=False
-        )
-        router._rfft_payload = np.ascontiguousarray(largest_payload)
-    else:
-        router._rfft_payload = np.empty(
-            (0, router.centroids.shape[1]), dtype=np.complex128
-        )
-    router.spectral_payloads = {
-        band: (
-            router._rfft_payload[: band + 1]
-            if band < full_band
-            else np.empty((0, router.centroids.shape[1]), dtype=np.complex128)
-        )
-        for band in router.bands
-    }
-    router.residuals = {
-        band: np.load(directory / f"residuals_{band}.npy", allow_pickle=False)
-        for band in router.bands
-    }
+    centroids = np.load(directory / "exact_centroids.npy", allow_pickle=False)
+    order = np.load(directory / "order.npy", allow_pickle=False)
     metadata_payload = json.loads(
         (directory / "shard_metadata.json").read_text(encoding="utf-8")
     )
-    router.shard_metadata = [
+    shard_metadata = [
         ShardMetadata(
             shard_id=int(item["shard_id"]),
             item_count=int(item["item_count"]),
@@ -147,6 +113,51 @@ def load_router(path: str | Path) -> "SSFRRouter":
         )
         for item in metadata_payload
     ] or None
+    if manifest.get("spectral_layout") != "rfft_prefix_v1":
+        return router.fit(centroids, shard_metadata=shard_metadata, order=order)
+
+    router.centroids = centroids
+    router.order = order
+    router.inverse_order = np.load(directory / "inverse_order.npy", allow_pickle=False)
+    router.ordered_centroids = np.ascontiguousarray(router.centroids[router.order])
+    router.bands = tuple(int(value) for value in manifest["bands"])
+    router.frequency_map = {
+        band: np.arange(band + 1, dtype=np.int64) for band in router.bands
+    }
+    router.spectral_payloads = {
+        band: np.empty((0, router.centroids.shape[1]), dtype=np.complex128)
+        for band in router.bands
+    }
+    full_band = router.centroids.shape[0] // 2
+    partial_bands = [band for band in router.bands if band < full_band]
+    attempted_partial_bands = (
+        partial_bands
+        if router.config.max_spectral_attempts is None
+        else partial_bands[: router.config.max_spectral_attempts]
+    )
+    if attempted_partial_bands:
+        largest_partial = max(attempted_partial_bands)
+        largest_payload = np.load(
+            directory / f"spectral_payload_{largest_partial}.npy", allow_pickle=False
+        )
+        router._rfft_payload = np.ascontiguousarray(largest_payload)
+    else:
+        router._rfft_payload = np.empty(
+            (0, router.centroids.shape[1]), dtype=np.complex128
+        )
+    router.spectral_payloads = {
+        band: (
+            router._rfft_payload[: band + 1]
+            if band in attempted_partial_bands
+            else np.empty((0, router.centroids.shape[1]), dtype=np.complex128)
+        )
+        for band in router.bands
+    }
+    router.residuals = {
+        band: np.load(directory / f"residuals_{band}.npy", allow_pickle=False)
+        for band in router.bands
+    }
+    router.shard_metadata = shard_metadata
     router._full_spectrum = None
     router._fitted = True
     return router

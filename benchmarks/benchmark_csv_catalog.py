@@ -21,6 +21,7 @@ def main() -> None:
     parser.add_argument("--bands", default="1,2,4")
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--max-spectral-attempts", type=int, default=0)
     args = parser.parse_args()
     report = run_csv_catalog_benchmark(
         csv_path=args.csv,
@@ -32,6 +33,7 @@ def main() -> None:
         bands=tuple(int(value) for value in args.bands.split(",")),
         top_k=args.top_k,
         seed=args.seed,
+        max_spectral_attempts=args.max_spectral_attempts,
     )
     print(json.dumps(report, indent=2, ensure_ascii=False))
 

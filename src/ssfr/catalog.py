@@ -101,6 +101,7 @@ class CatalogIndex:
         tolerant_csv: bool = True,
         force_embeddings: bool = False,
         random_seed: int = 42,
+        max_spectral_attempts: int | None = 2,
     ) -> tuple["CatalogIndex", dict[str, Any]]:
         started = perf_counter()
         output = Path(output_path)
@@ -170,6 +171,7 @@ class CatalogIndex:
                 distance_metric="cosine",
                 normalize_vectors=True,
                 random_seed=random_seed,
+                max_spectral_attempts=max_spectral_attempts,
             )
         ).fit(shard_result.centroids, metadata)
         router.save(str(output / "ssfr_router"))
@@ -190,7 +192,7 @@ class CatalogIndex:
 
         manifest = {
             "algorithm": "SSFR CSV Catalog",
-            "version": "0.1.0",
+            "version": "0.2.0",
             "created_at": datetime.now(UTC).isoformat(),
             "source_csv": str(Path(csv_path).resolve()),
             "source_checksum": file_sha256(csv_path),

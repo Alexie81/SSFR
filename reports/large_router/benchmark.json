@@ -1,0 +1,38 @@
+{
+  "benchmark": "large_router_only",
+  "physical_centroids": 16384,
+  "embedding_dimension": 768,
+  "physical_item_vectors": 0,
+  "queries": 100,
+  "probe_shards": 32,
+  "bands": [
+    32,
+    64,
+    128,
+    256,
+    512
+  ],
+  "max_spectral_attempts": 0,
+  "native_threads": 12,
+  "fit_seconds": 2.512035600026138,
+  "latency_ms": {
+    "mean": 2.381036003353074,
+    "p50": 2.3136500385589898,
+    "p95": 2.9711850918829437,
+    "p99": 3.5247770487330863
+  },
+  "fraction_certified": 1.0,
+  "fraction_exact_fallback": 1.0,
+  "route_modes": {
+    "exact_fallback": 100
+  },
+  "memory": {
+    "full_centroid_matrix_bytes": 100663296,
+    "spectral_payload_bytes": 0,
+    "residual_bytes": 655360,
+    "ordering_bytes": 262144,
+    "router_bytes_without_exact_centroids": 917504,
+    "router_bytes_with_exact_fallback": 101580800
+  },
+  "warning": "Router-only physical benchmark; no item-vector corpus or network shards were loaded."
+}

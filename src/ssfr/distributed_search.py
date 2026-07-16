@@ -32,6 +32,9 @@ class DistributedSSFRSearch:
         dimensions = {index.dimension for index in shard_indexes.values()}
         if dimensions != {router.dimension}:
             raise ValueError("all local indexes must match the router dimension")
+        metrics = {index.distance_metric for index in shard_indexes.values()}
+        if metrics != {router.config.distance_metric}:
+            raise ValueError("all local indexes must match the router distance metric")
         if execution_mode not in {"auto", "sequential", "threaded"}:
             raise ValueError("execution_mode must be auto, sequential, or threaded")
         self.router = router
@@ -70,13 +73,15 @@ class DistributedSSFRSearch:
         route = self.router.route(query, probe_shards=probe_shards)
         routing_done = perf_counter()
         candidate_k = max(top_k, local_top_k or top_k)
+        exemplar = next(iter(self.shard_indexes.values()))
+        prepared_query = exemplar._prepare_query(query)
 
         def run(shard_id: int) -> tuple[np.ndarray, np.ndarray]:
             allowed = None
             if allowed_ids_by_shard is not None:
                 allowed = allowed_ids_by_shard.get(shard_id, np.empty(0, dtype=str))
-            return self.shard_indexes[shard_id].search(
-                query, candidate_k, allowed_ids=allowed
+            return self.shard_indexes[shard_id].search_prepared(
+                prepared_query, candidate_k, allowed_ids=allowed
             )
 
         selected_shards = [int(value) for value in route.shard_ids]

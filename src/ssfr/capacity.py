@@ -22,8 +22,11 @@ class ScaleEstimate:
     spectral_projection_complex_terms: int
     approximate_ifft_operations: int
     centroid_matrix_float32_bytes: int
+    centroid_matrix_float64_bytes: int
     spectral_payload_complex64_bytes: int
+    spectral_payload_complex128_bytes: int
     residuals_float32_bytes: int
+    residuals_float64_bytes: int
     estimated_router_latency_ms: float | None
     estimated_local_and_network_latency_ms: float | None
     estimated_merge_latency_ms: float | None
@@ -104,8 +107,11 @@ def estimate_scale(
         spectral_projection_complex_terms=spectral_terms,
         approximate_ifft_operations=ifft_operations,
         centroid_matrix_float32_bytes=centroid_bytes,
+        centroid_matrix_float64_bytes=centroid_bytes * 2,
         spectral_payload_complex64_bytes=spectral_bytes,
+        spectral_payload_complex128_bytes=spectral_bytes * 2,
         residuals_float32_bytes=residual_bytes,
+        residuals_float64_bytes=residual_bytes * 2,
         estimated_router_latency_ms=router,
         estimated_local_and_network_latency_ms=local_network,
         estimated_merge_latency_ms=merge,

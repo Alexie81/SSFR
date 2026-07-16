@@ -73,14 +73,37 @@ python -m ssfr.cli search \
 ```bash
 pytest -v
 python demos/csv_ecommerce_search.py --build --search
+python demos/ecommerce_demo.py --items 100000 --shards 256 --latency-runs 300
 python benchmarks/compare_baselines.py --shards 128 --dimensions 64 --queries 50
 python benchmarks/benchmark_csv_catalog.py --csv data/products.csv --queries data/search_queries.csv
+python benchmarks/estimate_billion_scale.py --items 1000000000 --shards 16384
 uvicorn demos.api_demo:app
 ```
 
 Benchmark scripts write only measured results to `reports/benchmark_report.json`,
 `reports/benchmark_report.md`, and `reports/plots/`. CSV searches append their
 measured evaluation to `reports/csv_search_evaluation.csv`.
+
+## Low-latency behavior
+
+- The runtime stores one deduplicated rFFT prefix rather than one copy per band.
+- Incremental frequency blocks are projected only once.
+- A full Fourier band uses an equivalent exact centroid-matrix fast path.
+- `max_spectral_attempts` prevents repeated failed certificates before exact
+  fallback; set it to `0` when offline profiling shows exact centroid scoring is
+  faster.
+- A query is normalized once for all local shards.
+- In-process NumPy/HNSW shards run sequentially by default because Python
+  thread-pool dispatch is slower for short native calls. Remote I/O adapters can
+  explicitly use threaded execution.
+- `LocalShardIndex("auto")` selects exact NumPy below 10,000 items/shard and HNSW
+  for larger shards when HNSWlib is installed.
+- The synthetic demo calibrates the smallest probe budget meeting its requested
+  validation recall before serving queries.
+
+`reports/optimized_100k_demo.json` is generated from the physical 100,000-vector
+demo. `benchmarks/estimate_billion_scale.py` produces a capacity model only; it is
+never labelled as a physical billion-vector benchmark.
 
 ## Main API
 

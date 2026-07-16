@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ssfr.catalog import CatalogIndex, format_catalog_search
 from ssfr.console import configure_utf8_output
+from ssfr.performance import limit_native_threads
 
 
 def parse_args() -> argparse.Namespace:
@@ -24,12 +25,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--search", action="store_true")
     parser.add_argument("--local-index", default="exact")
+    parser.add_argument("--native-threads", type=int, default=1)
     return parser.parse_args()
 
 
 def main() -> None:
     configure_utf8_output()
     args = parse_args()
+    native_thread_limiter = limit_native_threads(args.native_threads)
     do_build = args.build or (not args.build and not args.search)
     do_search = args.search or (not args.build and not args.search)
     bands = tuple(int(value) for value in args.bands.split(","))
@@ -54,6 +57,7 @@ def main() -> None:
             probe_shards=args.probe_shards,
         )
         print(format_catalog_search(result))
+    del native_thread_limiter
 
 
 if __name__ == "__main__":

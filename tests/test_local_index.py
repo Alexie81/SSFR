@@ -32,3 +32,12 @@ def test_exact_local_index_filtering(rng: np.random.Generator) -> None:
     index.build(vectors, ids)
     found, _ = index.search(vectors[0], 5, allowed_ids=np.array([0, 2]))
     assert set(found.tolist()) <= {0, 2}
+
+
+def test_auto_backend_keeps_small_shards_exact(
+    rng: np.random.Generator,
+) -> None:
+    vectors = normalize_rows(rng.normal(size=(20, 6)))
+    index = LocalShardIndex("auto", auto_hnsw_threshold=100)
+    index.build(vectors, np.arange(20))
+    assert index.backend == "exact"

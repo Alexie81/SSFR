@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import csv
 import json
-import math
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Callable
@@ -348,6 +347,7 @@ def run_csv_catalog_benchmark(
     bands: tuple[int, ...] = (1, 2, 4),
     top_k: int = 5,
     seed: int = 42,
+    max_spectral_attempts: int | None = 0,
 ) -> dict[str, Any]:
     local_backend = "hnsw" if backend_available("hnsw") else "exact"
     catalog, build_report = CatalogIndex.build(
@@ -359,6 +359,7 @@ def run_csv_catalog_benchmark(
         embedding_provider="hash",
         local_index_backend=local_backend,
         random_seed=seed,
+        max_spectral_attempts=max_spectral_attempts,
     )
     with Path(queries_path).open("r", encoding="utf-8-sig", newline="") as handle:
         query_texts = [
@@ -388,6 +389,7 @@ def run_csv_catalog_benchmark(
         used_band: int = 0,
         shards_accessed: int = 0,
         candidates: int = 0,
+        route_mode: str = "",
     ) -> None:
         values = methods.setdefault(
             name,
@@ -399,6 +401,7 @@ def run_csv_catalog_benchmark(
                 "used_band": [],
                 "shards_accessed": [],
                 "candidates": [],
+                "route_mode": [],
             },
         )
         probe_values = by_probe.setdefault(str(probe), {}).setdefault(
@@ -411,6 +414,7 @@ def run_csv_catalog_benchmark(
                 "used_band": [],
                 "shards_accessed": [],
                 "candidates": [],
+                "route_mode": [],
             },
         )
         for destination in (values, probe_values):
@@ -421,6 +425,7 @@ def run_csv_catalog_benchmark(
             destination["used_band"].append(used_band)
             destination["shards_accessed"].append(shards_accessed)
             destination["candidates"].append(candidates)
+            destination["route_mode"].append(route_mode)
 
     for probe in probe_values:
         if probe > shards:
@@ -514,6 +519,7 @@ def run_csv_catalog_benchmark(
                 used_band=result.search.route.used_band,
                 shards_accessed=result.search.shards_accessed,
                 candidates=result.search.candidate_vectors_evaluated,
+                route_mode=result.search.route.route_mode,
             )
 
     def summarize(values: dict[str, list[Any]]) -> dict[str, Any]:
@@ -531,6 +537,11 @@ def run_csv_catalog_benchmark(
             "mean_shards_accessed": float(np.mean(values["shards_accessed"])),
             "mean_local_candidates_available": float(np.mean(values["candidates"])),
             "memory_bytes": 0,
+            "route_mode_counts": {
+                mode: values["route_mode"].count(mode)
+                for mode in sorted(set(values["route_mode"]))
+                if mode
+            },
         }
 
     summarized = {name: summarize(values) for name, values in methods.items()}
@@ -605,6 +616,7 @@ def run_csv_catalog_benchmark(
             "top_k": top_k,
             "physical_vectors_loaded": True,
             "local_index_backend": local_backend,
+            "max_spectral_attempts": max_spectral_attempts,
         },
         "build": build_report,
         "methods": summarized,

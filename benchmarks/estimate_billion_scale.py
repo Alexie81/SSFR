@@ -65,8 +65,16 @@ def main() -> None:
             f"{payload['centroid_matrix_float32_bytes'] / 2**20:.2f} MiB"
         ),
         (
+            "- Float64 centroid matrix used by the strict Python prototype: "
+            f"{payload['centroid_matrix_float64_bytes'] / 2**20:.2f} MiB"
+        ),
+        (
             "- Complex64 spectral payload: "
             f"{payload['spectral_payload_complex64_bytes'] / 2**20:.2f} MiB"
+        ),
+        (
+            "- Complex128 spectral payload used by the strict Python prototype: "
+            f"{payload['spectral_payload_complex128_bytes'] / 2**20:.2f} MiB"
         ),
         (
             "- Float32 residuals: "
