@@ -132,6 +132,44 @@ La cataloage foarte mari, afișarea tuturor produselor nu este practică. Folose
 `/top 10`, `/top 50` sau filtre și navighează paginat. Modul complet este util
 pentru validare și pentru cataloage locale mici.
 
+### Catalog fizic cu 1.000.000 de produse
+
+Generează un milion de produse și exact 256 de categorii:
+
+```powershell
+.\.venv\Scripts\python.exe tools\generate_million_products.py --force
+```
+
+Generatorul scrie progresul din 100.000 în 100.000 și produce:
+
+```text
+data/generated/products_1m.csv
+data/generated/products_1m.sqlite
+data/generated/categories_256.csv
+data/generated/products_1m_summary.json
+```
+
+Fișierul SQLite este o bază de date fizică indexată. CSV-ul conține aceleași produse
+și este sursa compatibilă cu build-ul SSFR. Datele sunt sintetice și deterministe,
+nu produse copiate de la un comerciant real.
+
+Construiește indexul SSFR mare:
+
+```powershell
+.\construieste_index_1m.cmd
+```
+
+Această operație poate dura mai multe minute și poate consuma câțiva GB RAM. După
+finalizare, pornește căutarea:
+
+```powershell
+.\cauta_1m.cmd
+```
+
+Pentru catalogul de un milion, CLI-ul pornește intenționat în modul `/top 20`, cu
+32 de sharduri accesate. Comanda `/toate` există în continuare, dar ar încerca să
+materializeze și să afișeze un milion de rezultate, deci nu este recomandată.
+
 ## 4. Testele automate
 
 Rulează toate testele:

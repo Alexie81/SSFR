@@ -20,8 +20,14 @@ class ProductCSVLoader:
         "in_stock",
     }
 
-    def __init__(self, *, tolerant: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        tolerant: bool = True,
+        track_duplicates: bool = True,
+    ) -> None:
         self.tolerant = tolerant
+        self.track_duplicates = track_duplicates
         self.last_report: ImportReport | None = None
 
     @staticmethod
@@ -83,7 +89,7 @@ class ProductCSVLoader:
         encoding = self._encoding(source)
         batch: list[ProductRecord] = []
         invalid_rows: list[dict[str, object]] = []
-        seen_ids: set[str] = set()
+        seen_ids: set[str] | None = set() if self.track_duplicates else None
         duplicate_ids = 0
         rows_read = 0
         rows_valid = 0
@@ -111,7 +117,7 @@ class ProductCSVLoader:
                         raise ValueError("title is empty")
                     if not description:
                         raise ValueError("description is empty")
-                    if product_id in seen_ids:
+                    if seen_ids is not None and product_id in seen_ids:
                         duplicate_ids += 1
                         raise ValueError(f"duplicate product_id: {product_id}")
                     record = ProductRecord(
@@ -127,7 +133,8 @@ class ProductCSVLoader:
                     )
                     batch.append(record)
                     rows_valid += 1
-                    seen_ids.add(product_id)
+                    if seen_ids is not None:
+                        seen_ids.add(product_id)
                     if len(batch) >= batch_size:
                         yield batch
                         batch = []

@@ -89,6 +89,48 @@ class DeterministicHashEmbeddingProvider:
         return self._encode(query).astype(np.float32)
 
 
+class FastHashEmbeddingProvider:
+    """Fast offline hashing based on scikit-learn's sparse vectorizer."""
+
+    def __init__(self, dimension: int = 384) -> None:
+        if dimension < 16:
+            raise ValueError("dimension must be at least 16")
+        from sklearn.feature_extraction.text import HashingVectorizer
+
+        self._dimension = int(dimension)
+        self._vectorizer = HashingVectorizer(
+            n_features=self._dimension,
+            alternate_sign=True,
+            norm="l2",
+            analyzer="word",
+            ngram_range=(1, 2),
+            lowercase=True,
+            strip_accents="unicode",
+            dtype=np.float32,
+        )
+
+    @property
+    def dimension(self) -> int:
+        return self._dimension
+
+    @property
+    def provider_id(self) -> str:
+        return f"fast-hash-v1:{self.dimension}"
+
+    def encode_texts(self, texts: list[str], batch_size: int = 64) -> np.ndarray:
+        if batch_size < 1:
+            raise ValueError("batch_size must be at least 1")
+        if not texts:
+            return np.empty((0, self.dimension), dtype=np.float32)
+        matrix = self._vectorizer.transform(texts)
+        return np.asarray(matrix.toarray(), dtype=np.float32)
+
+    def encode_query(self, query: str) -> np.ndarray:
+        if not query.strip():
+            raise ValueError("query text cannot be empty")
+        return self.encode_texts([query], batch_size=1)[0]
+
+
 class SentenceTransformersEmbeddingProvider:
     def __init__(
         self,
@@ -173,6 +215,8 @@ def create_embedding_provider(
 ) -> EmbeddingProvider:
     if provider == "hash":
         return DeterministicHashEmbeddingProvider(dimension)
+    if provider in {"fast-hash", "sklearn-hash"}:
+        return FastHashEmbeddingProvider(dimension)
     if provider == "sentence-transformers":
         return SentenceTransformersEmbeddingProvider(model_name)
     if provider == "openai":
@@ -184,7 +228,10 @@ def create_embedding_provider(
             except Exception:
                 pass
         return DeterministicHashEmbeddingProvider(dimension)
-    raise ValueError("embedding provider must be hash, auto, sentence-transformers, or openai")
+    raise ValueError(
+        "embedding provider must be hash, fast-hash, auto, "
+        "sentence-transformers, or openai"
+    )
 
 
 def file_sha256(path: str | Path) -> str:

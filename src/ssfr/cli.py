@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from time import perf_counter
+
+import psutil
 
 from .benchmarking import run_csv_catalog_benchmark
 from .catalog import CatalogIndex, format_catalog_search
@@ -36,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--ordering", default="recursive_pca")
     build.add_argument(
         "--embedding-provider",
-        choices=("hash", "auto", "sentence-transformers", "openai"),
+        choices=("hash", "fast-hash", "auto", "sentence-transformers", "openai"),
         default="hash",
     )
     build.add_argument(
@@ -53,6 +56,15 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--force-embeddings", action="store_true")
     build.add_argument("--seed", type=int, default=42)
     build.add_argument("--max-spectral-attempts", type=int, default=2)
+    build.add_argument(
+        "--streaming",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="stream large catalogs; enabled automatically for CSV files over 64 MiB",
+    )
+    build.add_argument("--batch-size", type=int, default=10_000)
+    build.add_argument("--kmeans-epochs", type=int, default=1)
+    build.add_argument("--progress-every", type=int, default=50_000)
     build.add_argument("--native-threads", type=int, default=1)
 
     search = subparsers.add_parser("search", help="search a previously built catalog")
@@ -131,23 +143,73 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _command_build(args: argparse.Namespace) -> int:
-    print("[SSFR] Loading and validating CSV...")
-    _, report = CatalogIndex.build(
-        args.csv,
-        args.output,
-        shard_count=args.shards,
-        bands=args.bands,
-        probe_shards=args.probe_shards,
-        ordering_method=args.ordering,
-        embedding_provider=args.embedding_provider,
-        embedding_model=args.embedding_model,
-        embedding_dimension=args.embedding_dimension,
-        local_index_backend=args.local_index,
-        tolerant_csv=not args.strict_csv,
-        force_embeddings=args.force_embeddings,
-        random_seed=args.seed,
-        max_spectral_attempts=args.max_spectral_attempts,
+    source = Path(args.csv)
+    streaming = (
+        source.stat().st_size >= 64 * 1024 * 1024
+        if args.streaming is None
+        else args.streaming
     )
+    if streaming:
+        print(
+            "[SSFR] Streaming build activat: datele sunt procesate în loturi, "
+            "fără încărcarea întregului CSV în RAM.",
+            flush=True,
+        )
+        process = psutil.Process()
+        progress_started = perf_counter()
+
+        def show_progress(phase: str, current: int, total: int | None) -> None:
+            memory_gib = process.memory_info().rss / 2**30
+            elapsed = perf_counter() - progress_started
+            if total:
+                percentage = 100.0 * current / total
+                amount = f"{current:,}/{total:,} ({percentage:5.1f}%)"
+            else:
+                amount = f"{current:,}"
+            print(
+                f"[SSFR] {phase}: {amount} | RAM {memory_gib:.2f} GiB | "
+                f"{elapsed:.1f} s",
+                flush=True,
+            )
+
+        _, report = CatalogIndex.build_streaming(
+            args.csv,
+            args.output,
+            shard_count=args.shards,
+            bands=args.bands,
+            probe_shards=args.probe_shards,
+            ordering_method=args.ordering,
+            embedding_provider=args.embedding_provider,
+            embedding_model=args.embedding_model,
+            embedding_dimension=args.embedding_dimension,
+            local_index_backend=args.local_index,
+            tolerant_csv=not args.strict_csv,
+            random_seed=args.seed,
+            max_spectral_attempts=args.max_spectral_attempts,
+            batch_size=args.batch_size,
+            kmeans_epochs=args.kmeans_epochs,
+            progress=show_progress,
+            progress_every=args.progress_every,
+            load_after_build=False,
+        )
+    else:
+        print("[SSFR] Loading and validating CSV...", flush=True)
+        _, report = CatalogIndex.build(
+            args.csv,
+            args.output,
+            shard_count=args.shards,
+            bands=args.bands,
+            probe_shards=args.probe_shards,
+            ordering_method=args.ordering,
+            embedding_provider=args.embedding_provider,
+            embedding_model=args.embedding_model,
+            embedding_dimension=args.embedding_dimension,
+            local_index_backend=args.local_index,
+            tolerant_csv=not args.strict_csv,
+            force_embeddings=args.force_embeddings,
+            random_seed=args.seed,
+            max_spectral_attempts=args.max_spectral_attempts,
+        )
     print(f"[SSFR] CSV loaded: {report['products_loaded']:,} valid products")
     cache = "cache hit" if report["embedding_cache_hit"] else "generated"
     print(

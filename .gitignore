@@ -14,3 +14,4 @@ reports/plots/
 *.npz
 *.parquet
 .DS_Store
+data/generated/

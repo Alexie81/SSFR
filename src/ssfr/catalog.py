@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import heapq
 import json
+from collections.abc import Callable
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,10 +25,101 @@ from .embeddings import (
     load_or_create_embeddings,
 )
 from .local_index import LocalShardIndex
-from .metrics import precision_at_k, recall_at_k
+from .metrics import normalize_rows, precision_at_k, recall_at_k
 from .router import SSFRRouter
 from .sharding import angular_radii, build_shard_metadata, build_shards
-from .types import CatalogSearchResult, ProductRecord, SearchResult, SSFRConfig
+from .types import (
+    CatalogSearchResult,
+    ProductRecord,
+    SearchResult,
+    ShardBuildResult,
+    SSFRConfig,
+)
+
+
+_PRODUCT_CSV_FIELDS = (
+    "product_id",
+    "title",
+    "description",
+    "category",
+    "brand",
+    "price_ron",
+    "color",
+    "audience",
+    "in_stock",
+)
+
+
+def _embedding_provider_name(provider_id: str) -> str:
+    if provider_id.startswith("sentence-transformers:"):
+        return "sentence-transformers"
+    if provider_id.startswith("openai:"):
+        return "openai"
+    if provider_id.startswith("fast-hash"):
+        return "fast-hash"
+    return "hash"
+
+
+def _repair_streaming_empty_clusters(
+    assignments: np.memmap,
+    embeddings: np.memmap,
+    centroid_sums: np.ndarray,
+    item_counts: np.ndarray,
+    *,
+    batch_size: int,
+) -> int:
+    """Move existing points into empty clusters without loading the catalog."""
+
+    empty_clusters = np.flatnonzero(item_counts == 0)
+    if empty_clusters.size == 0:
+        return 0
+
+    donor_heap = [
+        (-int(count), int(shard_id))
+        for shard_id, count in enumerate(item_counts)
+        if count > 1
+    ]
+    heapq.heapify(donor_heap)
+    donor_targets: dict[int, list[int]] = {}
+    for empty in empty_clusters:
+        if not donor_heap:
+            raise RuntimeError("unable to repair an empty shard")
+        negative_count, donor = heapq.heappop(donor_heap)
+        count = -negative_count
+        donor_targets.setdefault(donor, []).append(int(empty))
+        count -= 1
+        if count > 1:
+            heapq.heappush(donor_heap, (-count, donor))
+
+    donor_positions: dict[int, list[int]] = {
+        donor: [] for donor in donor_targets
+    }
+    pending = set(donor_targets)
+    for start in range(0, assignments.shape[0], batch_size):
+        stop = min(start + batch_size, assignments.shape[0])
+        labels = np.asarray(assignments[start:stop])
+        completed: list[int] = []
+        for donor in pending:
+            needed = len(donor_targets[donor]) - len(donor_positions[donor])
+            matches = np.flatnonzero(labels == donor)[:needed]
+            donor_positions[donor].extend((start + matches).tolist())
+            if len(donor_positions[donor]) == len(donor_targets[donor]):
+                completed.append(donor)
+        pending.difference_update(completed)
+        if not pending:
+            break
+    if pending:
+        raise RuntimeError("unable to locate donor points for empty shards")
+
+    for donor, targets in donor_targets.items():
+        for position, empty in zip(donor_positions[donor], targets, strict=True):
+            vector = np.asarray(embeddings[position], dtype=np.float64)
+            assignments[position] = empty
+            centroid_sums[donor] -= vector
+            centroid_sums[empty] += vector
+            item_counts[donor] -= 1
+            item_counts[empty] += 1
+    return int(empty_clusters.size)
 
 
 def _safe_text(value: Any) -> str | None:
@@ -197,13 +291,7 @@ class CatalogIndex:
             "source_csv": str(Path(csv_path).resolve()),
             "source_checksum": file_sha256(csv_path),
             "product_count": len(products),
-            "embedding_provider": (
-                "sentence-transformers"
-                if provider.provider_id.startswith("sentence-transformers:")
-                else "openai"
-                if provider.provider_id.startswith("openai:")
-                else "hash"
-            ),
+            "embedding_provider": _embedding_provider_name(provider.provider_id),
             "embedding_provider_id": provider.provider_id,
             "embedding_model": embedding_model,
             "embedding_dimension": provider.dimension,
@@ -243,6 +331,494 @@ class CatalogIndex:
         return index, report
 
     @classmethod
+    def build_streaming(
+        cls,
+        csv_path: str | Path,
+        output_path: str | Path,
+        *,
+        shard_count: int = 256,
+        bands: tuple[int, ...] = (8, 16, 32, 64, 128),
+        probe_shards: int = 16,
+        ordering_method: str = "recursive_pca",
+        embedding_provider: str = "hash",
+        embedding_model: str = (
+            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        ),
+        embedding_dimension: int = 384,
+        local_index_backend: str = "exact",
+        tolerant_csv: bool = True,
+        force_embeddings: bool = False,
+        random_seed: int = 42,
+        max_spectral_attempts: int | None = 2,
+        batch_size: int = 10_000,
+        kmeans_epochs: int = 1,
+        progress: Callable[[str, int, int], None] | None = None,
+        progress_every: int = 50_000,
+        load_after_build: bool = False,
+    ) -> tuple["CatalogIndex | None", dict[str, Any]]:
+        """Build large catalog artifacts with bounded per-batch working memory.
+
+        The CSV is parsed exactly twice. The first pass validates and counts
+        products; the second writes metadata, semantic text, IDs, and embeddings.
+        """
+
+        if shard_count < 1:
+            raise ValueError("shard_count must be at least 1")
+        if batch_size < 1:
+            raise ValueError("batch_size must be at least 1")
+        if kmeans_epochs < 1:
+            raise ValueError("kmeans_epochs must be at least 1")
+        if progress_every < 1:
+            raise ValueError("progress_every must be at least 1")
+        if progress is not None and not callable(progress):
+            raise TypeError("progress must be callable or None")
+
+        started = perf_counter()
+        source = Path(csv_path)
+        output = Path(output_path)
+        output.mkdir(parents=True, exist_ok=True)
+        products_path = output / "products.csv"
+        if source.resolve() == products_path.resolve():
+            raise ValueError("output products.csv must not overwrite the source CSV")
+
+        last_progress: dict[str, int] = {}
+
+        def report_progress(
+            phase: str,
+            current: int,
+            total: int,
+            *,
+            force: bool = False,
+        ) -> None:
+            if progress is None:
+                return
+            previous = last_progress.get(phase)
+            if (
+                force
+                or previous is None
+                or current - previous >= progress_every
+            ):
+                progress(phase, int(current), int(total))
+                last_progress[phase] = int(current)
+
+        metadata_loader = ProductCSVLoader(tolerant=tolerant_csv)
+        product_count = 0
+        max_product_id_length = 1
+        report_progress("csv_pass_1", 0, 0, force=True)
+        for product_batch in metadata_loader.iter_batches(
+            source, batch_size=batch_size
+        ):
+            max_product_id_length = max(
+                max_product_id_length,
+                max(len(product.product_id) for product in product_batch),
+            )
+            product_count += len(product_batch)
+            report_progress("csv_pass_1", product_count, 0)
+
+        if metadata_loader.last_report is None:
+            raise RuntimeError("CSV import did not produce an import report")
+        if product_count == 0:
+            raise ValueError("CSV contains no valid product rows")
+        if shard_count > product_count:
+            raise ValueError(
+                "shard_count must be between 1 and the number of embeddings"
+            )
+        report_progress(
+            "csv_pass_1", product_count, product_count, force=True
+        )
+        (output / "import_report.json").write_text(
+            json.dumps(
+                metadata_loader.last_report.to_dict(),
+                indent=2,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        source_checksum = file_sha256(source)
+        provider = create_embedding_provider(
+            embedding_provider,
+            model_name=embedding_model,
+            dimension=embedding_dimension,
+        )
+        cache_key = hashlib.sha256(
+            (
+                f"{source_checksum}|{provider.provider_id}|{product_count}"
+            ).encode("utf-8")
+        ).hexdigest()
+        embedding_path = output / "embeddings.npy"
+        cache_path = output / "embedding_cache.json"
+        cache_hit = False
+        embeddings: np.memmap
+        if not force_embeddings and embedding_path.exists() and cache_path.exists():
+            try:
+                cache_manifest = json.loads(
+                    cache_path.read_text(encoding="utf-8")
+                )
+                if cache_manifest.get("cache_key") == cache_key:
+                    cached_embeddings = np.lib.format.open_memmap(
+                        embedding_path, mode="r+"
+                    )
+                    if (
+                        cached_embeddings.shape
+                        == (product_count, provider.dimension)
+                        and cached_embeddings.dtype == np.dtype(np.float32)
+                    ):
+                        embeddings = cached_embeddings
+                        del cached_embeddings
+                        cache_hit = True
+                    else:
+                        del cached_embeddings
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                cache_hit = False
+        if not cache_hit:
+            embeddings = np.lib.format.open_memmap(
+                embedding_path,
+                mode="w+",
+                dtype=np.float32,
+                shape=(product_count, provider.dimension),
+            )
+
+        product_ids = np.lib.format.open_memmap(
+            output / "product_ids.npy",
+            mode="w+",
+            dtype=f"<U{max_product_id_length}",
+            shape=(product_count,),
+        )
+        embedding_loader = ProductCSVLoader(tolerant=tolerant_csv)
+        second_pass_count = 0
+        report_progress("csv_pass_2", 0, product_count, force=True)
+        with (
+            products_path.open(
+                "w", encoding="utf-8", newline=""
+            ) as products_handle,
+            (output / "semantic_texts.jsonl").open(
+                "w", encoding="utf-8"
+            ) as semantic_handle,
+        ):
+            writer = csv.DictWriter(
+                products_handle,
+                fieldnames=list(_PRODUCT_CSV_FIELDS),
+            )
+            writer.writeheader()
+            for product_batch in embedding_loader.iter_batches(
+                source, batch_size=batch_size
+            ):
+                stop = second_pass_count + len(product_batch)
+                if stop > product_count:
+                    raise RuntimeError(
+                        "CSV changed between streaming build passes"
+                    )
+                batch_ids = [
+                    product.product_id for product in product_batch
+                ]
+                if any(
+                    len(product_id) > max_product_id_length
+                    for product_id in batch_ids
+                ):
+                    raise RuntimeError(
+                        "CSV changed between streaming build passes"
+                    )
+                writer.writerows(
+                    product.to_dict() for product in product_batch
+                )
+                texts = [build_semantic_text(product) for product in product_batch]
+                for product, text in zip(
+                    product_batch, texts, strict=True
+                ):
+                    semantic_handle.write(
+                        json.dumps(
+                            {
+                                "product_id": product.product_id,
+                                "semantic_text": text,
+                            },
+                            ensure_ascii=False,
+                        )
+                        + "\n"
+                    )
+                product_ids[second_pass_count:stop] = batch_ids
+                if not cache_hit:
+                    encoded = provider.encode_texts(
+                        texts,
+                        batch_size=min(batch_size, 64),
+                    )
+                    normalized = normalize_rows(
+                        encoded, name="embedding batch"
+                    ).astype(np.float32)
+                    if normalized.shape != (
+                        len(product_batch),
+                        provider.dimension,
+                    ):
+                        raise ValueError(
+                            "embedding provider returned an unexpected matrix shape"
+                        )
+                    embeddings[second_pass_count:stop] = normalized
+                    del encoded, normalized
+                second_pass_count = stop
+                report_progress(
+                    "csv_pass_2", second_pass_count, product_count
+                )
+
+        if (
+            embedding_loader.last_report is None
+            or second_pass_count != product_count
+            or embedding_loader.last_report.rows_valid != product_count
+        ):
+            raise RuntimeError("CSV changed between streaming build passes")
+        del batch_ids, product_batch, texts
+        embeddings.flush()
+        product_ids.flush()
+        report_progress(
+            "csv_pass_2", product_count, product_count, force=True
+        )
+        cache_path.write_text(
+            json.dumps(
+                {
+                    "cache_key": cache_key,
+                    "source_checksum": source_checksum,
+                    "provider_id": provider.provider_id,
+                    "dimension": provider.dimension,
+                    "row_count": product_count,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        try:
+            from sklearn.cluster import MiniBatchKMeans
+        except ImportError as exc:
+            raise RuntimeError(
+                "CatalogIndex.build_streaming requires scikit-learn"
+            ) from exc
+
+        kmeans_batch_size = min(
+            product_count, max(batch_size, shard_count)
+        )
+        kmeans = MiniBatchKMeans(
+            n_clusters=shard_count,
+            random_state=random_seed,
+            batch_size=kmeans_batch_size,
+            n_init=3,
+            max_no_improvement=20,
+            reassignment_ratio=0.01,
+        )
+        kmeans_total = product_count * kmeans_epochs
+        report_progress("kmeans", 0, kmeans_total, force=True)
+        for epoch in range(kmeans_epochs):
+            for start in range(0, product_count, kmeans_batch_size):
+                stop = min(start + kmeans_batch_size, product_count)
+                kmeans.partial_fit(
+                    np.asarray(embeddings[start:stop], dtype=np.float32)
+                )
+                report_progress(
+                    "kmeans",
+                    epoch * product_count + stop,
+                    kmeans_total,
+                )
+        report_progress(
+            "kmeans", kmeans_total, kmeans_total, force=True
+        )
+
+        assignments = np.lib.format.open_memmap(
+            output / "shard_assignments.npy",
+            mode="w+",
+            dtype=np.int64,
+            shape=(product_count,),
+        )
+        centroid_sums = np.zeros(
+            (shard_count, provider.dimension), dtype=np.float64
+        )
+        item_counts = np.zeros(shard_count, dtype=np.int64)
+        report_progress("assignments", 0, product_count, force=True)
+        for start in range(0, product_count, batch_size):
+            stop = min(start + batch_size, product_count)
+            vectors = np.asarray(
+                embeddings[start:stop], dtype=np.float32
+            )
+            labels = np.asarray(kmeans.predict(vectors), dtype=np.int64)
+            assignments[start:stop] = labels
+            np.add.at(centroid_sums, labels, vectors)
+            np.add.at(item_counts, labels, 1)
+            report_progress("assignments", stop, product_count)
+        del labels, vectors
+
+        empty_clusters_repaired = _repair_streaming_empty_clusters(
+            assignments,
+            embeddings,
+            centroid_sums,
+            item_counts,
+            batch_size=batch_size,
+        )
+        assignments.flush()
+        if np.any(item_counts == 0):
+            raise RuntimeError("empty shard repair failed")
+        report_progress(
+            "assignments", product_count, product_count, force=True
+        )
+
+        centroids = normalize_rows(
+            centroid_sums / item_counts[:, None],
+            name="shard centroids",
+        )
+        euclidean_radii = np.zeros(shard_count, dtype=np.float64)
+        angular = np.zeros(shard_count, dtype=np.float64)
+        report_progress("radii", 0, product_count, force=True)
+        for start in range(0, product_count, batch_size):
+            stop = min(start + batch_size, product_count)
+            labels = np.asarray(assignments[start:stop], dtype=np.int64)
+            vectors_64 = np.asarray(
+                embeddings[start:stop], dtype=np.float64
+            )
+            local_centroids = centroids[labels]
+            distances = np.linalg.norm(
+                vectors_64 - local_centroids, axis=1
+            )
+            cosines = np.einsum(
+                "ij,ij->i", vectors_64, local_centroids
+            )
+            angles = np.arccos(np.clip(cosines, -1.0, 1.0))
+            np.maximum.at(euclidean_radii, labels, distances)
+            np.maximum.at(angular, labels, angles)
+            report_progress("radii", stop, product_count)
+        del angles, cosines, distances, labels, local_centroids, vectors_64
+        report_progress("radii", product_count, product_count, force=True)
+
+        np.save(output / "shard_centroids.npy", centroids, allow_pickle=False)
+        np.save(
+            output / "shard_radii.npy",
+            euclidean_radii,
+            allow_pickle=False,
+        )
+        np.save(
+            output / "shard_item_counts.npy",
+            item_counts,
+            allow_pickle=False,
+        )
+        np.save(
+            output / "shard_angular_radii.npy",
+            angular,
+            allow_pickle=False,
+        )
+        shard_result = ShardBuildResult(
+            assignments=assignments,
+            centroids=centroids,
+            euclidean_radii=euclidean_radii,
+            item_counts=item_counts,
+        )
+        metadata = build_shard_metadata(
+            shard_result,
+            index_root="local_indexes",
+            angular=angular,
+        )
+        router = SSFRRouter(
+            SSFRConfig(
+                spectral_bands=bands,
+                probe_shards=min(probe_shards, shard_count),
+                exact_fallback=True,
+                ordering_method=ordering_method,
+                distance_metric="cosine",
+                normalize_vectors=True,
+                random_seed=random_seed,
+                max_spectral_attempts=max_spectral_attempts,
+            )
+        ).fit(centroids, metadata)
+        router.save(str(output / "ssfr_router"))
+
+        report_progress("local_indexes", 0, product_count, force=True)
+        sorted_positions = np.argsort(assignments, kind="stable")
+        shard_offsets = np.empty(shard_count + 1, dtype=np.int64)
+        shard_offsets[0] = 0
+        np.cumsum(item_counts, out=shard_offsets[1:])
+        local_root = output / "local_indexes"
+        actual_backend = local_index_backend
+        indexed_count = 0
+        for shard_id in range(shard_count):
+            start = int(shard_offsets[shard_id])
+            stop = int(shard_offsets[shard_id + 1])
+            positions = sorted_positions[start:stop]
+            index = LocalShardIndex(
+                backend=local_index_backend,
+                distance_metric="cosine",
+            )
+            index.build(embeddings[positions], product_ids[positions])
+            index.save(local_root / f"shard_{shard_id:05d}")
+            actual_backend = index.backend
+            indexed_count += stop - start
+            report_progress(
+                "local_indexes", indexed_count, product_count
+            )
+        del index, positions
+        report_progress(
+            "local_indexes", product_count, product_count, force=True
+        )
+
+        manifest = {
+            "algorithm": "SSFR CSV Catalog",
+            "version": "0.2.0",
+            "created_at": datetime.now(UTC).isoformat(),
+            "source_csv": str(source.resolve()),
+            "source_checksum": source_checksum,
+            "product_count": product_count,
+            "embedding_provider": _embedding_provider_name(
+                provider.provider_id
+            ),
+            "embedding_provider_id": provider.provider_id,
+            "embedding_model": embedding_model,
+            "embedding_dimension": provider.dimension,
+            "shard_count": shard_count,
+            "bands": list(router.bands),
+            "probe_shards": router.config.probe_shards,
+            "ordering_method": ordering_method,
+            "local_index_backend": actual_backend,
+            "metadata_format": "csv",
+            "embedding_cache_hit": cache_hit,
+            "streaming_build": True,
+            "batch_size": batch_size,
+            "kmeans_epochs": kmeans_epochs,
+        }
+        (output / "catalog_manifest.json").write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        build_time_seconds = perf_counter() - started
+        report = {
+            "products_loaded": product_count,
+            "invalid_rows": metadata_loader.last_report.rows_invalid,
+            "embedding_dimension": provider.dimension,
+            "embedding_cache_hit": cache_hit,
+            "shards_built": shard_count,
+            "bands": list(router.bands),
+            "local_index_backend": actual_backend,
+            "metadata_format": "csv",
+            "streaming_build": True,
+            "batch_size": batch_size,
+            "kmeans_epochs": kmeans_epochs,
+            "empty_clusters_repaired": empty_clusters_repaired,
+            "build_time_seconds": build_time_seconds,
+            "artifact_path": str(output.resolve()),
+        }
+
+        embeddings.flush()
+        product_ids.flush()
+        assignments.flush()
+        del sorted_positions
+        del shard_result
+        del embeddings
+        del product_ids
+        del assignments
+
+        loaded_index: CatalogIndex | None = None
+        if load_after_build:
+            report_progress("load", 0, 1, force=True)
+            loaded_index = cls.load(output)
+            report_progress("load", 1, 1, force=True)
+        report_progress(
+            "complete", product_count, product_count, force=True
+        )
+        return loaded_index, report
+
+    @classmethod
     def load(cls, path: str | Path) -> "CatalogIndex":
         directory = Path(path)
         manifest = json.loads(
@@ -251,7 +827,10 @@ class CatalogIndex:
         if manifest["metadata_format"] == "parquet":
             frame = pd.read_parquet(directory / "products.parquet")
         else:
-            frame = pd.read_csv(directory / "products.csv")
+            frame = pd.read_csv(
+                directory / "products.csv",
+                dtype={"product_id": str},
+            )
         products = [_product_from_mapping(item) for item in frame.to_dict(orient="records")]
         provider = create_embedding_provider(
             manifest["embedding_provider"],
