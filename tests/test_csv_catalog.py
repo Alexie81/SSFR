@@ -106,3 +106,34 @@ def test_pre_and_post_filters_are_supported(tmp_path) -> None:
             product.price_ron is not None and product.price_ron <= 500
             for product in result.products
         )
+
+
+def test_all_results_searches_every_shard_and_returns_every_filtered_product(
+    tmp_path,
+) -> None:
+    catalog, _ = CatalogIndex.build(
+        "data/products.csv",
+        tmp_path / "catalog",
+        shard_count=4,
+        bands=(1, 2),
+        probe_shards=1,
+        embedding_provider="hash",
+        embedding_dimension=64,
+        local_index_backend="exact",
+    )
+    result = catalog.search_text(
+        "electronice",
+        top_k=1,
+        probe_shards=1,
+        all_results=True,
+        category="Electronice",
+        report_path=None,
+    )
+    expected = [product for product in catalog.products if product.category == "Electronice"]
+    assert len(result.products) == len(expected)
+    assert {product.product_id for product in result.products} == {
+        product.product_id for product in expected
+    }
+    assert result.search.shards_accessed == catalog.router.shard_count
+    assert result.recall_at_k == 1.0
+    assert result.precision_at_k == 1.0

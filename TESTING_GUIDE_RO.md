@@ -91,6 +91,47 @@ Backendul HNSW este opțional:
 
 Aplicația funcționează și fără HNSW, prin backendul exact NumPy.
 
+### Cel mai simplu mod de utilizare
+
+După ce indexul există în `artifacts/products`, pornește programul astfel:
+
+```powershell
+.\cauta.cmd
+```
+
+Nu mai trebuie să repeți comenzi lungi. Programul rămâne deschis și poți scrie
+căutări una după alta:
+
+```text
+Caută > laptop pentru programare
+Caută > telefon cu baterie mare
+Caută > adidași impermeabili
+```
+
+Modul implicit este `TOATE rezultatele`: accesează toate shardurile, nu elimină
+produse prin rutare aproximativă, sortează toate produsele compatibile după scor și
+le afișează câte 10 pe pagină.
+
+Comenzile principale din interiorul programului sunt:
+
+```text
+/toate                  toate rezultatele din toate shardurile
+/top 5                  numai primele 5 rezultate
+/sharduri toate         toate shardurile, dar păstrează limita top
+/pagina 20              20 de rezultate pe pagină
+/categorie Electronice  filtru de categorie
+/culoare negru          filtru de culoare
+/pret-max 1000          filtru de preț
+/stoc da                numai produse în stoc
+/fara-filtre            elimină filtrele
+/ajutor                 lista completă
+/iesire                 închide programul
+```
+
+La cataloage foarte mari, afișarea tuturor produselor nu este practică. Folosește
+`/top 10`, `/top 50` sau filtre și navighează paginat. Modul complet este util
+pentru validare și pentru cataloage locale mici.
+
 ## 4. Testele automate
 
 Rulează toate testele:
@@ -187,6 +228,26 @@ Rulează încă o dată aceeași comandă. Câmpul `embedding_cache_hit` trebuie
 adevărat dacă CSV-ul și providerul nu s-au schimbat.
 
 ## 6. Căutare simplă
+
+Pentru toate rezultatele din toate shardurile:
+
+```powershell
+.\.venv\Scripts\python.exe -m ssfr.cli search `
+  --index artifacts/products `
+  --query "laptop pentru programare și editare video" `
+  --all-results
+```
+
+Pentru numai primele 10 rezultate, dar fără pierderi produse de selecția
+shardurilor:
+
+```powershell
+.\.venv\Scripts\python.exe -m ssfr.cli search `
+  --index artifacts/products `
+  --query "laptop pentru programare și editare video" `
+  --top-k 10 `
+  --all-shards
+```
 
 ```powershell
 .\.venv\Scripts\python.exe -m ssfr.cli search `

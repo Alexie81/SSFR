@@ -39,6 +39,26 @@ hash embedding provider and the exact NumPy local index.
 
 ## Quick start with the included CSV
 
+The easiest Windows workflow is the interactive CLI:
+
+```powershell
+.\cauta.cmd
+```
+
+It loads `artifacts/products`, accepts repeated queries without restarting Python,
+searches every shard by default, returns every filtered product sorted by score,
+and displays results page by page. Type `/ajutor` inside the program for live
+commands. Use `/top 10` when you prefer a bounded low-latency result set, and
+`/toate` to return to complete exact-catalog mode.
+
+The same interface can be started explicitly:
+
+```powershell
+.\.venv\Scripts\python.exe -m ssfr interactive --index artifacts/products
+```
+
+For scripts and automation, the non-interactive commands remain available:
+
 ```bash
 python -m ssfr.cli build \
   --csv data/products.csv \
@@ -51,9 +71,11 @@ python -m ssfr.cli build \
 python -m ssfr.cli search \
   --index artifacts/products \
   --query "adidași negri impermeabili pentru alergare pe munte" \
-  --top-k 3 \
-  --probe-shards 2
+  --all-results
 ```
+
+`--all-results` searches all shards and returns every product passing the filters.
+`--all-shards` searches all shards but still limits output to `--top-k`.
 
 Structured filtering:
 

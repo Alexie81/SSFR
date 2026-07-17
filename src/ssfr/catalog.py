@@ -321,6 +321,7 @@ class CatalogIndex:
         *,
         top_k: int = 10,
         probe_shards: int | None = None,
+        all_results: bool = False,
         filter_strategy: str = "post",
         report_path: str | Path | None = "reports/csv_search_evaluation.csv",
         **filters: Any,
@@ -331,6 +332,7 @@ class CatalogIndex:
             query=query,
             top_k=top_k,
             probe_shards=probe_shards,
+            all_results=all_results,
             filter_strategy=filter_strategy,
             report_path=report_path,
             **filters,
@@ -343,6 +345,7 @@ class CatalogIndex:
         query: str = "<vector query>",
         top_k: int = 10,
         probe_shards: int | None = None,
+        all_results: bool = False,
         filter_strategy: str = "post",
         report_path: str | Path | None = "reports/csv_search_evaluation.csv",
         price_min: float | None = None,
@@ -366,6 +369,14 @@ class CatalogIndex:
             audience=audience,
             in_stock_only=in_stock_only,
         )
+        if all_results:
+            # "All" is deliberately exact for the local catalog: every shard is
+            # searched and every product passing the filters is returned. Using
+            # pre-filtering also forces an exact scan inside approximate local
+            # backends, so no matching item is dropped by HNSW/FAISS.
+            top_k = max(1, int(np.count_nonzero(mask)))
+            probe_shards = self.router.shard_count
+            filter_strategy = "pre"
         vector = np.asarray(query_vector, dtype=np.float64)
         vector /= np.linalg.norm(vector)
 

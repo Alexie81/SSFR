@@ -9,6 +9,7 @@ from pathlib import Path
 from .benchmarking import run_csv_catalog_benchmark
 from .catalog import CatalogIndex, format_catalog_search
 from .console import configure_utf8_output
+from .interactive import InteractiveState, run_interactive
 from .performance import limit_native_threads
 
 
@@ -59,6 +60,16 @@ def build_parser() -> argparse.ArgumentParser:
     search.add_argument("--query", required=True)
     search.add_argument("--top-k", type=int, default=10)
     search.add_argument("--probe-shards", type=int)
+    search.add_argument(
+        "--all-results",
+        action="store_true",
+        help="return every filtered product from every shard, sorted by score",
+    )
+    search.add_argument(
+        "--all-shards",
+        action="store_true",
+        help="search the requested top-k in every shard",
+    )
     search.add_argument("--price-min", type=float)
     search.add_argument("--price-max", type=float)
     search.add_argument("--category")
@@ -74,6 +85,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     search.add_argument("--json", action="store_true", dest="as_json")
     search.add_argument("--native-threads", type=int, default=1)
+
+    interactive = subparsers.add_parser(
+        "interactive",
+        aliases=("live", "cauta"),
+        help="open a friendly live search session",
+    )
+    interactive.add_argument("--index", default="artifacts/products")
+    interactive.add_argument("--top-k", type=int, default=10)
+    interactive.add_argument("--probe-shards", type=int)
+    interactive.add_argument(
+        "--top-only",
+        action="store_true",
+        help="start in fast top-k mode instead of exact all-results mode",
+    )
+    interactive.add_argument("--page-size", type=int, default=10)
+    interactive.add_argument("--price-min", type=float)
+    interactive.add_argument("--price-max", type=float)
+    interactive.add_argument("--category")
+    interactive.add_argument("--brand")
+    interactive.add_argument("--color")
+    interactive.add_argument("--audience")
+    interactive.add_argument("--in-stock-only", action="store_true")
+    interactive.add_argument(
+        "--report", default="reports/csv_search_evaluation.csv"
+    )
+    interactive.add_argument("--native-threads", type=int, default=1)
 
     benchmark = subparsers.add_parser(
         "benchmark-csv", help="run measured baselines on a CSV catalog"
@@ -126,10 +163,16 @@ def _command_build(args: argparse.Namespace) -> int:
 
 def _command_search(args: argparse.Namespace) -> int:
     catalog = CatalogIndex.load(args.index)
+    probe_shards = (
+        catalog.router.shard_count
+        if args.all_results or args.all_shards
+        else args.probe_shards
+    )
     result = catalog.search_text(
         args.query,
         top_k=args.top_k,
-        probe_shards=args.probe_shards,
+        probe_shards=probe_shards,
+        all_results=args.all_results,
         price_min=args.price_min,
         price_max=args.price_max,
         category=args.category,
@@ -143,6 +186,8 @@ def _command_search(args: argparse.Namespace) -> int:
     if args.as_json:
         payload = {
             "query": result.query,
+            "returned_results": len(result.products),
+            "all_results_requested": args.all_results,
             "results": [
                 {**product.to_dict(), "score": float(score)}
                 for product, score in zip(result.products, result.scores, strict=True)
@@ -167,6 +212,28 @@ def _command_search(args: argparse.Namespace) -> int:
     else:
         print(format_catalog_search(result))
     return 0
+
+
+def _command_interactive(args: argparse.Namespace) -> int:
+    catalog = CatalogIndex.load(args.index)
+    state = InteractiveState(
+        all_results=not args.top_only,
+        top_k=args.top_k,
+        probe_shards=args.probe_shards,
+        page_size=args.page_size,
+        price_min=args.price_min,
+        price_max=args.price_max,
+        category=args.category,
+        brand=args.brand,
+        color=args.color,
+        audience=args.audience,
+        in_stock_only=args.in_stock_only,
+    )
+    return run_interactive(
+        catalog,
+        state=state,
+        report_path=args.report,
+    )
 
 
 def _command_benchmark(args: argparse.Namespace) -> int:
@@ -197,6 +264,10 @@ def main(argv: list[str] | None = None) -> int:
         return result
     if args.command == "search":
         result = _command_search(args)
+        del native_thread_limiter
+        return result
+    if args.command in {"interactive", "live", "cauta"}:
+        result = _command_interactive(args)
         del native_thread_limiter
         return result
     if args.command == "benchmark-csv":
