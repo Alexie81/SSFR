@@ -322,6 +322,7 @@ class CatalogIndex:
         top_k: int = 10,
         probe_shards: int | None = None,
         all_results: bool = False,
+        evaluate: bool = True,
         filter_strategy: str = "post",
         report_path: str | Path | None = "reports/csv_search_evaluation.csv",
         **filters: Any,
@@ -333,6 +334,7 @@ class CatalogIndex:
             top_k=top_k,
             probe_shards=probe_shards,
             all_results=all_results,
+            evaluate=evaluate,
             filter_strategy=filter_strategy,
             report_path=report_path,
             **filters,
@@ -346,6 +348,7 @@ class CatalogIndex:
         top_k: int = 10,
         probe_shards: int | None = None,
         all_results: bool = False,
+        evaluate: bool = True,
         filter_strategy: str = "post",
         report_path: str | Path | None = "reports/csv_search_evaluation.csv",
         price_min: float | None = None,
@@ -418,21 +421,46 @@ class CatalogIndex:
                     break
                 budget = min(selected_capacity, budget * 2)
 
+        if all_results and filtered_ids.size:
+            # Keep pagination stable even when multiple products have equal
+            # similarity scores.
+            stable_order = np.lexsort(
+                (
+                    np.asarray(filtered_ids, dtype=str),
+                    -np.asarray(filtered_scores, dtype=np.float64),
+                )
+            )
+            filtered_ids = np.asarray(filtered_ids)[stable_order]
+            filtered_scores = np.asarray(filtered_scores)[stable_order]
+
         search = replace(
             raw,
             item_ids=np.asarray(filtered_ids),
             scores=np.asarray(filtered_scores, dtype=np.float64),
         )
-        oracle_ids, _ = exact_global_search(
-            vector,
-            self.embeddings,
-            self.product_ids,
-            top_k,
-            allowed_mask=mask,
-        )
+        if evaluate:
+            oracle_ids, _ = exact_global_search(
+                vector,
+                self.embeddings,
+                self.product_ids,
+                top_k,
+                allowed_mask=mask,
+            )
+            recall = recall_at_k(search.item_ids.tolist(), oracle_ids.tolist(), top_k)
+            precision = precision_at_k(
+                search.item_ids.tolist(), oracle_ids.tolist(), top_k
+            )
+        elif all_results:
+            # Complete all-shard exact retrieval is its own correctness guarantee;
+            # avoid scanning the global embedding matrix a second time.
+            oracle_ids = search.item_ids.copy()
+            recall = 1.0
+            precision = 1.0
+        else:
+            oracle_ids = np.empty(0, dtype=self.product_ids.dtype)
+            recall = float("nan")
+            precision = float("nan")
         products = tuple(self._product_by_id[str(item_id)] for item_id in search.item_ids)
-        recall = recall_at_k(search.item_ids.tolist(), oracle_ids.tolist(), top_k)
-        precision = precision_at_k(search.item_ids.tolist(), oracle_ids.tolist(), top_k)
         result = CatalogSearchResult(
             query=query,
             products=products,

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from math import ceil
 from pathlib import Path
+from time import perf_counter
 
 from .catalog import CatalogIndex
 from .types import CatalogSearchResult
@@ -84,6 +85,7 @@ def _format_page(
     *,
     page: int,
     page_size: int,
+    perceived_latency_ms: float,
 ) -> str:
     total = len(result.products)
     page_count = max(1, ceil(total / page_size))
@@ -99,7 +101,8 @@ def _format_page(
         (
             f"Sharduri {result.search.shards_accessed}/{route.approximate_scores.size} | "
             f"Recall {result.recall_at_k:.3f} | "
-            f"Timp total {result.search.total_latency_ms:.3f} ms"
+            f"Motor {result.search.total_latency_ms:.3f} ms | "
+            f"Perceput {perceived_latency_ms:.3f} ms"
         ),
         "-" * 72,
     ]
@@ -145,12 +148,20 @@ def _show_paginated(
     *,
     input_fn: InputFunction,
     output_fn: OutputFunction,
+    perceived_latency_ms: float,
 ) -> bool:
     total = len(result.products)
     page_count = max(1, ceil(total / state.page_size))
     page = 0
     while True:
-        output_fn(_format_page(result, page=page, page_size=state.page_size))
+        output_fn(
+            _format_page(
+                result,
+                page=page,
+                page_size=state.page_size,
+                perceived_latency_ms=perceived_latency_ms,
+            )
+        )
         if page_count <= 1:
             return True
         action = _read(
@@ -174,6 +185,7 @@ def _show_paginated(
                         result,
                         page=remaining_page,
                         page_size=state.page_size,
+                        perceived_latency_ms=perceived_latency_ms,
                     )
                 )
             return True
@@ -311,7 +323,8 @@ def run_interactive(
     state: InteractiveState | None = None,
     input_fn: InputFunction = input,
     output_fn: OutputFunction = print,
-    report_path: str | Path | None = "reports/csv_search_evaluation.csv",
+    report_path: str | Path | None = None,
+    evaluate: bool = False,
 ) -> int:
     """Run a reusable interactive search session over an already loaded catalog."""
 
@@ -332,6 +345,11 @@ def run_interactive(
         f"Produse: {len(catalog.products)} | Sharduri: {catalog.router.shard_count}"
     )
     output_fn(_format_status(current, catalog))
+    if catalog.manifest.get("embedding_provider") == "hash":
+        output_fn(
+            "Notă: indexul folosește embeddingul demonstrativ hash; pentru relevanță "
+            "semantică mai bună reconstruiește-l cu sentence-transformers."
+        )
     output_fn("Scrie ce cauți. Pentru comenzi folosește /ajutor.")
     output_fn("=" * 72)
 
@@ -349,12 +367,14 @@ def run_interactive(
                 return 0
             continue
         output_fn("Se caută...")
+        perceived_started = perf_counter()
         try:
             result = catalog.search_text(
                 query,
                 top_k=current.top_k,
                 probe_shards=current.probe_shards,
                 all_results=current.all_results,
+                evaluate=evaluate,
                 filter_strategy="pre",
                 report_path=report_path,
                 category=current.category,
@@ -368,11 +388,13 @@ def run_interactive(
         except (OSError, RuntimeError, ValueError) as exc:
             output_fn(f"Eroare la căutare: {exc}")
             continue
+        perceived_latency_ms = (perf_counter() - perceived_started) * 1000.0
         if not _show_paginated(
             result,
             current,
             input_fn=input_fn,
             output_fn=output_fn,
+            perceived_latency_ms=perceived_latency_ms,
         ):
             output_fn("Program închis.")
             return 0

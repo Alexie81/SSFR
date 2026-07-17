@@ -108,7 +108,8 @@ def build_parser() -> argparse.ArgumentParser:
     interactive.add_argument("--audience")
     interactive.add_argument("--in-stock-only", action="store_true")
     interactive.add_argument(
-        "--report", default="reports/csv_search_evaluation.csv"
+        "--report",
+        help="optional CSV evaluation report; disabled by default for live search",
     )
     interactive.add_argument("--native-threads", type=int, default=1)
 
@@ -233,6 +234,7 @@ def _command_interactive(args: argparse.Namespace) -> int:
         catalog,
         state=state,
         report_path=args.report,
+        evaluate=args.report is not None,
     )
 
 

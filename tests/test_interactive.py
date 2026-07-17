@@ -10,7 +10,7 @@ def _input_sequence(*values: str):
     return lambda _prompt: next(responses)
 
 
-def test_interactive_defaults_to_all_results(tmp_path) -> None:
+def test_interactive_defaults_to_all_results(tmp_path, monkeypatch) -> None:
     catalog, _ = CatalogIndex.build(
         "data/products.csv",
         tmp_path / "catalog",
@@ -20,6 +20,14 @@ def test_interactive_defaults_to_all_results(tmp_path) -> None:
         embedding_provider="hash",
         embedding_dimension=64,
         local_index_backend="exact",
+    )
+
+    def fail_if_oracle_runs(*_args, **_kwargs):
+        raise AssertionError("interactive complete search must not rescan the oracle")
+
+    monkeypatch.setattr(
+        "ssfr.catalog.exact_global_search",
+        fail_if_oracle_runs,
     )
     output: list[str] = []
     status = run_interactive(
@@ -67,6 +75,7 @@ def test_cli_exposes_interactive_and_all_results_options() -> None:
     interactive = parser.parse_args(["interactive"])
     assert interactive.index == "artifacts/products"
     assert interactive.top_only is False
+    assert interactive.report is None
     search = parser.parse_args(
         [
             "search",
