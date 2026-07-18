@@ -3,7 +3,7 @@ setlocal
 set "SSFR_ROOT=%~dp0"
 set "SSFR_PYTHON=%SSFR_ROOT%.venv\Scripts\python.exe"
 set "SSFR_CSV=%SSFR_ROOT%data\generated\products_1m.csv"
-set "SSFR_INDEX=%SSFR_ROOT%artifacts\products_1m_semantic"
+set "SSFR_INDEX=%SSFR_ROOT%artifacts\products_1m_fast"
 
 if not exist "%SSFR_PYTHON%" (
   echo [EROARE] Nu exista mediul Python: "%SSFR_PYTHON%"
@@ -12,13 +12,10 @@ if not exist "%SSFR_PYTHON%" (
 
 if not exist "%SSFR_CSV%" (
   echo [EROARE] Nu exista catalogul: "%SSFR_CSV%"
-  echo Genereaza-l cu tools\generate_million_products.py.
   exit /b 1
 )
 
-echo [SSFR] Se construieste indexul fizic pentru 1.000.000 de produse.
-echo [SSFR] Model semantic multilingv: romana + engleza.
-echo [SSFR] Prima rulare descarca modelul multilingual-e5-small.
+echo [SSFR] Build rapid lexical. Este pentru teste de viteza, nu pentru relevanta semantica.
 
 "%SSFR_PYTHON%" -m ssfr.cli build ^
   --csv "%SSFR_CSV%" ^
@@ -26,15 +23,14 @@ echo [SSFR] Prima rulare descarca modelul multilingual-e5-small.
   --shards 256 ^
   --bands 8,16,32,64,128 ^
   --probe-shards 32 ^
-  --embedding-provider multilingual-e5 ^
-  --embedding-model intfloat/multilingual-e5-small ^
-  --embedding-batch-size 256 ^
+  --embedding-provider fast-hash ^
+  --embedding-dimension 64 ^
   --local-index auto ^
   --max-spectral-attempts 0 ^
   --streaming ^
-  --batch-size 2000 ^
+  --batch-size 10000 ^
   --kmeans-epochs 1 ^
-  --progress-every 10000 ^
+  --progress-every 50000 ^
   --native-threads 8
 
 exit /b %ERRORLEVEL%

@@ -39,14 +39,27 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--ordering", default="recursive_pca")
     build.add_argument(
         "--embedding-provider",
-        choices=("hash", "fast-hash", "auto", "sentence-transformers", "openai"),
+        choices=(
+            "hash",
+            "fast-hash",
+            "multilingual-e5",
+            "auto",
+            "sentence-transformers",
+            "openai",
+        ),
         default="hash",
     )
     build.add_argument(
         "--embedding-model",
-        default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        default=None,
     )
     build.add_argument("--embedding-dimension", type=int, default=384)
+    build.add_argument(
+        "--embedding-batch-size",
+        type=int,
+        default=64,
+        help="texts processed together by the embedding model (separate from CSV batch size)",
+    )
     build.add_argument(
         "--local-index",
         choices=("auto", "exact", "hnsw", "faiss"),
@@ -94,6 +107,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     search.add_argument(
         "--report", default="reports/csv_search_evaluation.csv"
+    )
+    search.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="compare with a full exact scan; intended for benchmarks, not live search",
     )
     search.add_argument("--json", action="store_true", dest="as_json")
     search.add_argument("--native-threads", type=int, default=1)
@@ -150,13 +168,35 @@ def _command_build(args: argparse.Namespace) -> int:
         else args.streaming
     )
     if streaming:
+        selected_model = args.embedding_model or (
+            "intfloat/multilingual-e5-small"
+            if args.embedding_provider == "multilingual-e5"
+            else "implicit"
+        )
         print(
             "[SSFR] Streaming build activat: datele sunt procesate în loturi, "
             "fără încărcarea întregului CSV în RAM.",
             flush=True,
         )
+        print(
+            f"[SSFR] Embedding: {args.embedding_provider} | model: {selected_model} | "
+            f"lot model: {args.embedding_batch_size}",
+            flush=True,
+        )
         process = psutil.Process()
         progress_started = perf_counter()
+
+        phase_names = {
+            "csv_pass_1": "validare CSV",
+            "embedding_model": "încărcare model semantic",
+            "csv_pass_2": "scriere + embeddings",
+            "kmeans": "MiniBatchKMeans",
+            "assignments": "asignare sharduri",
+            "radii": "calcul raze",
+            "local_indexes": "indexuri locale",
+            "load": "încărcare index",
+            "complete": "finalizat",
+        }
 
         def show_progress(phase: str, current: int, total: int | None) -> None:
             memory_gib = process.memory_info().rss / 2**30
@@ -167,7 +207,8 @@ def _command_build(args: argparse.Namespace) -> int:
             else:
                 amount = f"{current:,}"
             print(
-                f"[SSFR] {phase}: {amount} | RAM {memory_gib:.2f} GiB | "
+                f"[SSFR] {phase_names.get(phase, phase)}: {amount} | "
+                f"RAM {memory_gib:.2f} GiB | "
                 f"{elapsed:.1f} s",
                 flush=True,
             )
@@ -182,8 +223,10 @@ def _command_build(args: argparse.Namespace) -> int:
             embedding_provider=args.embedding_provider,
             embedding_model=args.embedding_model,
             embedding_dimension=args.embedding_dimension,
+            embedding_batch_size=args.embedding_batch_size,
             local_index_backend=args.local_index,
             tolerant_csv=not args.strict_csv,
+            force_embeddings=args.force_embeddings,
             random_seed=args.seed,
             max_spectral_attempts=args.max_spectral_attempts,
             batch_size=args.batch_size,
@@ -204,6 +247,7 @@ def _command_build(args: argparse.Namespace) -> int:
             embedding_provider=args.embedding_provider,
             embedding_model=args.embedding_model,
             embedding_dimension=args.embedding_dimension,
+            embedding_batch_size=args.embedding_batch_size,
             local_index_backend=args.local_index,
             tolerant_csv=not args.strict_csv,
             force_embeddings=args.force_embeddings,
@@ -215,6 +259,10 @@ def _command_build(args: argparse.Namespace) -> int:
     print(
         f"[SSFR] Embeddings {cache}: {report['products_loaded']:,} × "
         f"{report['embedding_dimension']}"
+    )
+    print(
+        f"[SSFR] Dispozitiv embedding: {report.get('embedding_device', 'cpu')} | "
+        f"precizie: {report.get('embedding_precision', 'fp32')}"
     )
     print(f"[SSFR] Shards built: {report['shards_built']}")
     print(f"[SSFR] Spectral router fitted with bands {report['bands']}")
@@ -236,6 +284,7 @@ def _command_search(args: argparse.Namespace) -> int:
         top_k=args.top_k,
         probe_shards=probe_shards,
         all_results=args.all_results,
+        evaluate=args.evaluate,
         price_min=args.price_min,
         price_max=args.price_max,
         category=args.category,
@@ -244,7 +293,7 @@ def _command_search(args: argparse.Namespace) -> int:
         audience=args.audience,
         in_stock_only=args.in_stock_only,
         filter_strategy=args.filter_strategy,
-        report_path=args.report,
+        report_path=args.report if args.evaluate else None,
     )
     if args.as_json:
         payload = {
@@ -278,7 +327,20 @@ def _command_search(args: argparse.Namespace) -> int:
 
 
 def _command_interactive(args: argparse.Namespace) -> int:
+    started = perf_counter()
+    print(
+        "[SSFR] Se încarcă indexul și modelul semantic; acest pas se execută "
+        "o singură dată...",
+        flush=True,
+    )
     catalog = CatalogIndex.load(args.index)
+    elapsed = perf_counter() - started
+    memory_gib = psutil.Process().memory_info().rss / 2**30
+    print(
+        f"[SSFR] Index pregătit: {len(catalog.products):,} produse | "
+        f"{elapsed:.2f} s | RAM {memory_gib:.2f} GiB",
+        flush=True,
+    )
     state = InteractiveState(
         all_results=not args.top_only,
         top_k=args.top_k,

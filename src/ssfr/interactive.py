@@ -345,7 +345,7 @@ def run_interactive(
         f"Produse: {len(catalog.products)} | Sharduri: {catalog.router.shard_count}"
     )
     output_fn(_format_status(current, catalog))
-    if catalog.manifest.get("embedding_provider") == "hash":
+    if catalog.manifest.get("embedding_provider") in {"hash", "fast-hash"}:
         output_fn(
             "Notă: indexul folosește embeddingul demonstrativ hash; pentru relevanță "
             "semantică mai bună reconstruiește-l cu sentence-transformers."

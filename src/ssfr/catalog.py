@@ -51,6 +51,8 @@ _PRODUCT_CSV_FIELDS = (
 
 
 def _embedding_provider_name(provider_id: str) -> str:
+    if provider_id.startswith("multilingual-e5:"):
+        return "multilingual-e5"
     if provider_id.startswith("sentence-transformers:"):
         return "sentence-transformers"
     if provider_id.startswith("openai:"):
@@ -187,10 +189,9 @@ class CatalogIndex:
         probe_shards: int = 16,
         ordering_method: str = "recursive_pca",
         embedding_provider: str = "hash",
-        embedding_model: str = (
-            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-        ),
+        embedding_model: str | None = None,
         embedding_dimension: int = 384,
+        embedding_batch_size: int = 64,
         local_index_backend: str = "exact",
         tolerant_csv: bool = True,
         force_embeddings: bool = False,
@@ -198,6 +199,8 @@ class CatalogIndex:
         max_spectral_attempts: int | None = 2,
     ) -> tuple["CatalogIndex", dict[str, Any]]:
         started = perf_counter()
+        if embedding_batch_size < 1:
+            raise ValueError("embedding_batch_size must be at least 1")
         output = Path(output_path)
         output.mkdir(parents=True, exist_ok=True)
 
@@ -230,6 +233,7 @@ class CatalogIndex:
             provider,
             output,
             source_checksum=file_sha256(csv_path),
+            batch_size=embedding_batch_size,
             force=force_embeddings,
         )
         product_ids = np.asarray([product.product_id for product in products], dtype=str)
@@ -293,8 +297,10 @@ class CatalogIndex:
             "product_count": len(products),
             "embedding_provider": _embedding_provider_name(provider.provider_id),
             "embedding_provider_id": provider.provider_id,
-            "embedding_model": embedding_model,
+            "embedding_model": getattr(provider, "model_name", embedding_model or ""),
             "embedding_dimension": provider.dimension,
+            "embedding_device": getattr(provider, "device", "cpu"),
+            "embedding_precision": getattr(provider, "precision", "fp32"),
             "shard_count": shard_count,
             "bands": list(router.bands),
             "probe_shards": router.config.probe_shards,
@@ -321,6 +327,8 @@ class CatalogIndex:
             "products_loaded": len(products),
             "invalid_rows": loader.last_report.rows_invalid,
             "embedding_dimension": provider.dimension,
+            "embedding_device": getattr(provider, "device", "cpu"),
+            "embedding_precision": getattr(provider, "precision", "fp32"),
             "embedding_cache_hit": cache_hit,
             "shards_built": shard_count,
             "bands": list(router.bands),
@@ -341,10 +349,9 @@ class CatalogIndex:
         probe_shards: int = 16,
         ordering_method: str = "recursive_pca",
         embedding_provider: str = "hash",
-        embedding_model: str = (
-            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-        ),
+        embedding_model: str | None = None,
         embedding_dimension: int = 384,
+        embedding_batch_size: int = 64,
         local_index_backend: str = "exact",
         tolerant_csv: bool = True,
         force_embeddings: bool = False,
@@ -366,6 +373,8 @@ class CatalogIndex:
             raise ValueError("shard_count must be at least 1")
         if batch_size < 1:
             raise ValueError("batch_size must be at least 1")
+        if embedding_batch_size < 1:
+            raise ValueError("embedding_batch_size must be at least 1")
         if kmeans_epochs < 1:
             raise ValueError("kmeans_epochs must be at least 1")
         if progress_every < 1:
@@ -436,11 +445,13 @@ class CatalogIndex:
         )
 
         source_checksum = file_sha256(source)
+        report_progress("embedding_model", 0, 1, force=True)
         provider = create_embedding_provider(
             embedding_provider,
             model_name=embedding_model,
             dimension=embedding_dimension,
         )
+        report_progress("embedding_model", 1, 1, force=True)
         cache_key = hashlib.sha256(
             (
                 f"{source_checksum}|{provider.provider_id}|{product_count}"
@@ -485,6 +496,21 @@ class CatalogIndex:
             dtype=f"<U{max_product_id_length}",
             shape=(product_count,),
         )
+
+        def checkpoint_embeddings() -> None:
+            """Flush and remap embeddings so Windows can release old pages."""
+
+            nonlocal embeddings
+            embeddings.flush()
+            del embeddings
+            embeddings = np.lib.format.open_memmap(
+                embedding_path,
+                mode="r+",
+            )
+
+        def crossed_checkpoint(start: int, stop: int, total: int) -> bool:
+            return stop == total or stop // progress_every > start // progress_every
+
         embedding_loader = ProductCSVLoader(tolerant=tolerant_csv)
         second_pass_count = 0
         report_progress("csv_pass_2", 0, product_count, force=True)
@@ -540,7 +566,7 @@ class CatalogIndex:
                 if not cache_hit:
                     encoded = provider.encode_texts(
                         texts,
-                        batch_size=min(batch_size, 64),
+                        batch_size=embedding_batch_size,
                     )
                     normalized = normalize_rows(
                         encoded, name="embedding batch"
@@ -555,6 +581,12 @@ class CatalogIndex:
                     embeddings[second_pass_count:stop] = normalized
                     del encoded, normalized
                 second_pass_count = stop
+                if crossed_checkpoint(
+                    second_pass_count - len(product_batch),
+                    second_pass_count,
+                    product_count,
+                ):
+                    checkpoint_embeddings()
                 report_progress(
                     "csv_pass_2", second_pass_count, product_count
                 )
@@ -611,6 +643,8 @@ class CatalogIndex:
                 kmeans.partial_fit(
                     np.asarray(embeddings[start:stop], dtype=np.float32)
                 )
+                if crossed_checkpoint(start, stop, product_count):
+                    checkpoint_embeddings()
                 report_progress(
                     "kmeans",
                     epoch * product_count + stop,
@@ -640,8 +674,10 @@ class CatalogIndex:
             assignments[start:stop] = labels
             np.add.at(centroid_sums, labels, vectors)
             np.add.at(item_counts, labels, 1)
+            del labels, vectors
+            if crossed_checkpoint(start, stop, product_count):
+                checkpoint_embeddings()
             report_progress("assignments", stop, product_count)
-        del labels, vectors
 
         empty_clusters_repaired = _repair_streaming_empty_clusters(
             assignments,
@@ -680,8 +716,10 @@ class CatalogIndex:
             angles = np.arccos(np.clip(cosines, -1.0, 1.0))
             np.maximum.at(euclidean_radii, labels, distances)
             np.maximum.at(angular, labels, angles)
+            del angles, cosines, distances, labels, local_centroids, vectors_64
+            if crossed_checkpoint(start, stop, product_count):
+                checkpoint_embeddings()
             report_progress("radii", stop, product_count)
-        del angles, cosines, distances, labels, local_centroids, vectors_64
         report_progress("radii", product_count, product_count, force=True)
 
         np.save(output / "shard_centroids.npy", centroids, allow_pickle=False)
@@ -734,6 +772,7 @@ class CatalogIndex:
         actual_backend = local_index_backend
         indexed_count = 0
         for shard_id in range(shard_count):
+            previous_indexed_count = indexed_count
             start = int(shard_offsets[shard_id])
             stop = int(shard_offsets[shard_id + 1])
             positions = sorted_positions[start:stop]
@@ -745,10 +784,16 @@ class CatalogIndex:
             index.save(local_root / f"shard_{shard_id:05d}")
             actual_backend = index.backend
             indexed_count += stop - start
+            del index, positions
+            if crossed_checkpoint(
+                previous_indexed_count,
+                indexed_count,
+                product_count,
+            ):
+                checkpoint_embeddings()
             report_progress(
                 "local_indexes", indexed_count, product_count
             )
-        del index, positions
         report_progress(
             "local_indexes", product_count, product_count, force=True
         )
@@ -764,8 +809,10 @@ class CatalogIndex:
                 provider.provider_id
             ),
             "embedding_provider_id": provider.provider_id,
-            "embedding_model": embedding_model,
+            "embedding_model": getattr(provider, "model_name", embedding_model or ""),
             "embedding_dimension": provider.dimension,
+            "embedding_device": getattr(provider, "device", "cpu"),
+            "embedding_precision": getattr(provider, "precision", "fp32"),
             "shard_count": shard_count,
             "bands": list(router.bands),
             "probe_shards": router.config.probe_shards,
@@ -775,6 +822,7 @@ class CatalogIndex:
             "embedding_cache_hit": cache_hit,
             "streaming_build": True,
             "batch_size": batch_size,
+            "embedding_batch_size": embedding_batch_size,
             "kmeans_epochs": kmeans_epochs,
         }
         (output / "catalog_manifest.json").write_text(
@@ -786,6 +834,8 @@ class CatalogIndex:
             "products_loaded": product_count,
             "invalid_rows": metadata_loader.last_report.rows_invalid,
             "embedding_dimension": provider.dimension,
+            "embedding_device": getattr(provider, "device", "cpu"),
+            "embedding_precision": getattr(provider, "precision", "fp32"),
             "embedding_cache_hit": cache_hit,
             "shards_built": shard_count,
             "bands": list(router.bands),
@@ -793,6 +843,7 @@ class CatalogIndex:
             "metadata_format": "csv",
             "streaming_build": True,
             "batch_size": batch_size,
+            "embedding_batch_size": embedding_batch_size,
             "kmeans_epochs": kmeans_epochs,
             "empty_clusters_repaired": empty_clusters_repaired,
             "build_time_seconds": build_time_seconds,
@@ -871,6 +922,16 @@ class CatalogIndex:
         in_stock_only: bool = False,
     ) -> np.ndarray:
         mask = np.ones(len(self.products), dtype=bool)
+        if (
+            price_min is None
+            and price_max is None
+            and category is None
+            and brand is None
+            and color is None
+            and audience is None
+            and not in_stock_only
+        ):
+            return mask
         for position, product in enumerate(self.products):
             if price_min is not None and (
                 product.price_ron is None or product.price_ron < price_min
@@ -942,6 +1003,17 @@ class CatalogIndex:
             raise ValueError("filter_strategy must be 'pre' or 'post'")
         if top_k < 1:
             raise ValueError("top_k must be at least 1")
+        filters_active = any(
+            value is not None
+            for value in (
+                price_min,
+                price_max,
+                category,
+                brand,
+                color,
+                audience,
+            )
+        ) or in_stock_only
         mask = self._filter_mask(
             price_min=price_min,
             price_max=price_max,
@@ -962,7 +1034,7 @@ class CatalogIndex:
         vector = np.asarray(query_vector, dtype=np.float64)
         vector /= np.linalg.norm(vector)
 
-        if filter_strategy == "pre":
+        if filter_strategy == "pre" and filters_active:
             allowed = {
                 shard_id: self.product_ids[
                     (self.assignments == shard_id) & mask

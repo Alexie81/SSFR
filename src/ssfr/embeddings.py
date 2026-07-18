@@ -16,6 +16,12 @@ import numpy as np
 from .metrics import normalize_rows, normalize_vector
 
 
+DEFAULT_SENTENCE_TRANSFORMER_MODEL = (
+    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+)
+DEFAULT_MULTILINGUAL_E5_MODEL = "intfloat/multilingual-e5-small"
+
+
 class EmbeddingProvider(Protocol):
     @property
     def dimension(self) -> int:
@@ -134,8 +140,9 @@ class FastHashEmbeddingProvider:
 class SentenceTransformersEmbeddingProvider:
     def __init__(
         self,
-        model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        model_name: str = DEFAULT_SENTENCE_TRANSFORMER_MODEL,
     ) -> None:
+        os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:
@@ -144,8 +151,19 @@ class SentenceTransformersEmbeddingProvider:
                 "or use the deterministic hash provider"
             ) from exc
         self.model_name = model_name
-        self._model = SentenceTransformer(model_name)
-        self._dimension = int(self._model.get_sentence_embedding_dimension())
+        try:
+            self._model = SentenceTransformer(model_name, local_files_only=True)
+        except (OSError, ValueError):
+            self._model = SentenceTransformer(model_name)
+        if hasattr(self._model, "get_embedding_dimension"):
+            dimension = self._model.get_embedding_dimension()
+        else:
+            dimension = self._model.get_sentence_embedding_dimension()
+        self._dimension = int(dimension)
+        self.device = str(getattr(self._model, "device", "cpu"))
+        self.precision = "fp16" if self.device.startswith("cuda") else "fp32"
+        if self.precision == "fp16":
+            self._model.half()
 
     @property
     def dimension(self) -> int:
@@ -153,7 +171,7 @@ class SentenceTransformersEmbeddingProvider:
 
     @property
     def provider_id(self) -> str:
-        return f"sentence-transformers:{self.model_name}"
+        return f"sentence-transformers:{self.model_name}:{self.precision}"
 
     def encode_texts(self, texts: list[str], batch_size: int = 64) -> np.ndarray:
         vectors = self._model.encode(
@@ -168,6 +186,26 @@ class SentenceTransformersEmbeddingProvider:
         if not query.strip():
             raise ValueError("query text cannot be empty")
         return self.encode_texts([query], batch_size=1)[0]
+
+
+class MultilingualE5EmbeddingProvider(SentenceTransformersEmbeddingProvider):
+    """Asymmetric multilingual retrieval embeddings with E5 prefixes."""
+
+    def __init__(self, model_name: str = DEFAULT_MULTILINGUAL_E5_MODEL) -> None:
+        super().__init__(model_name)
+
+    @property
+    def provider_id(self) -> str:
+        return f"multilingual-e5:{self.model_name}:{self.precision}"
+
+    def encode_texts(self, texts: list[str], batch_size: int = 64) -> np.ndarray:
+        passages = [f"passage: {text}" for text in texts]
+        return super().encode_texts(passages, batch_size=batch_size)
+
+    def encode_query(self, query: str) -> np.ndarray:
+        if not query.strip():
+            raise ValueError("query text cannot be empty")
+        return super().encode_texts([f"query: {query}"], batch_size=1)[0]
 
 
 class OpenAIEmbeddingProvider:
@@ -210,7 +248,7 @@ class OpenAIEmbeddingProvider:
 def create_embedding_provider(
     provider: str = "hash",
     *,
-    model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    model_name: str | None = None,
     dimension: int = 384,
 ) -> EmbeddingProvider:
     if provider == "hash":
@@ -218,18 +256,26 @@ def create_embedding_provider(
     if provider in {"fast-hash", "sklearn-hash"}:
         return FastHashEmbeddingProvider(dimension)
     if provider == "sentence-transformers":
-        return SentenceTransformersEmbeddingProvider(model_name)
+        return SentenceTransformersEmbeddingProvider(
+            model_name or DEFAULT_SENTENCE_TRANSFORMER_MODEL
+        )
+    if provider in {"multilingual-e5", "e5"}:
+        return MultilingualE5EmbeddingProvider(
+            model_name or DEFAULT_MULTILINGUAL_E5_MODEL
+        )
     if provider == "openai":
-        return OpenAIEmbeddingProvider(model_name, dimension)
+        return OpenAIEmbeddingProvider(model_name or "text-embedding-3-small", dimension)
     if provider == "auto":
         if importlib.util.find_spec("sentence_transformers") is not None:
             try:
-                return SentenceTransformersEmbeddingProvider(model_name)
+                return SentenceTransformersEmbeddingProvider(
+                    model_name or DEFAULT_SENTENCE_TRANSFORMER_MODEL
+                )
             except Exception:
                 pass
         return DeterministicHashEmbeddingProvider(dimension)
     raise ValueError(
-        "embedding provider must be hash, fast-hash, auto, "
+        "embedding provider must be hash, fast-hash, multilingual-e5, auto, "
         "sentence-transformers, or openai"
     )
 

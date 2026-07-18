@@ -137,3 +137,12 @@ def test_all_results_searches_every_shard_and_returns_every_filtered_product(
     assert result.search.shards_accessed == catalog.router.shard_count
     assert result.recall_at_k == 1.0
     assert result.precision_at_k == 1.0
+
+
+def test_empty_filters_do_not_scan_product_fields() -> None:
+    catalog = CatalogIndex.__new__(CatalogIndex)
+    catalog.products = [object(), object(), object()]
+
+    mask = catalog._filter_mask()
+
+    assert mask.tolist() == [True, True, True]

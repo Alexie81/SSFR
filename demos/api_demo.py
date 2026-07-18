@@ -104,6 +104,8 @@ def search(request: SearchRequest) -> dict[str, Any]:
             "audience": request.audience,
             "in_stock_only": request.in_stock_only,
             "filter_strategy": request.filter_strategy,
+            "evaluate": False,
+            "report_path": None,
         }
         if request.query is not None:
             result = catalog.search_text(request.query, **common)

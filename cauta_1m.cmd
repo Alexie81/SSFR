@@ -2,10 +2,10 @@
 setlocal
 set "SSFR_ROOT=%~dp0"
 set "SSFR_PYTHON=%SSFR_ROOT%.venv\Scripts\python.exe"
-set "SSFR_INDEX=%SSFR_ROOT%artifacts\products_1m"
+set "SSFR_INDEX=%SSFR_ROOT%artifacts\products_1m_semantic"
 
 if not exist "%SSFR_INDEX%\catalog_manifest.json" (
-  echo [EROARE] Indexul pentru 1 milion de produse nu exista.
+  echo [EROARE] Indexul semantic pentru 1 milion de produse nu exista.
   echo Ruleaza mai intai: .\construieste_index_1m.cmd
   exit /b 1
 )
